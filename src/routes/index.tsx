@@ -1,4 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { getDeadlines } from "@/services/deadlines";
 import { useMemo, useState } from "react";
 import {
   Bell,
@@ -18,7 +19,6 @@ import {
   Star,
   Sparkles,
 } from "lucide-react";
-import { useDeadlines } from "@/hooks/useDeadlines";
 import type {
   Course,
   DeadlineItem,
@@ -27,7 +27,7 @@ import type {
 } from "@/data/mockDeadlineItems";
 import { cn } from "@/lib/utils";
 
-export const Route = createFileRoute("/")({
+export const Route = createFileRoute("/")({  loader: () => getDeadlines(),
   head: () => ({
     meta: [
       { title: "SyllabuSync — Academic Deadlines Dashboard" },
@@ -88,7 +88,7 @@ const statusStyles: Record<DeadlineStatus, string> = {
 };
 
 function Dashboard() {
-  const { items, loading } = useDeadlines();
+  const items = Route.useLoaderData();
   const [course, setCourse] = useState<Course | "All Courses">("All Courses");
   const [type, setType] = useState<"All" | DeadlineType>("All");
   const [status, setStatus] = useState<"All" | DeadlineStatus>("All");
@@ -210,11 +210,7 @@ function Dashboard() {
 
         {/* Items */}
         <section className="mt-6 flex flex-col gap-3">
-          {loading ? (
-            <div className="rounded-2xl border border-border bg-white p-8 text-center text-sm text-muted-foreground">
-              Loading deadlines…
-            </div>
-          ) : filtered.length === 0 ? (
+          {filtered.length === 0 ? (
             <div className="rounded-2xl border border-dashed border-border bg-white p-12 text-center">
               <p className="text-sm font-medium">No deadlines match your filters.</p>
               <p className="mt-1 text-sm text-muted-foreground">

@@ -15,6 +15,10 @@ dist-ssr
 .tanstack/**
 .nitro
 *.local
+*.sqlite
+data.json
+processed-messages.json
+.env
 
 # Wrangler / Cloudflare
 .wrangler/
