@@ -3,31 +3,22 @@ import { getDeadlines } from "@/services/deadlines";
 import { useMemo, useState } from "react";
 import {
   Bell,
-  BookOpen,
+  Eye,
+  EyeOff,
   Cpu,
-  GitBranch,
   FileText,
   Briefcase,
   LayoutGrid,
   GraduationCap,
-  Megaphone,
   Calendar,
-  Clock,
-  AlertCircle,
-  CheckCircle2,
-  XCircle,
   Star,
   Sparkles,
 } from "lucide-react";
-import type {
-  Course,
-  DeadlineItem,
-  DeadlineStatus,
-  DeadlineType,
-} from "@/data/mockDeadlineItems";
+import type { Course, DeadlineItem, DeadlineStatus } from "@/data/mockDeadlineItems";
 import { cn } from "@/lib/utils";
 
-export const Route = createFileRoute("/")({  loader: () => getDeadlines(),
+export const Route = createFileRoute("/")({
+  loader: () => getDeadlines(),
   head: () => ({
     meta: [
       { title: "SyllabuSync — Academic Deadlines Dashboard" },
@@ -46,37 +37,24 @@ export const Route = createFileRoute("/")({  loader: () => getDeadlines(),
   component: Dashboard,
 });
 
-const COURSES: { name: Course | "All Courses"; icon: React.ComponentType<{ className?: string }> }[] = [
+const COURSES: {
+  name: Course | "All Courses";
+  icon: React.ComponentType<{ className?: string }>;
+}[] = [
   { name: "All Courses", icon: LayoutGrid },
-  { name: "Data Structures", icon: BookOpen },
   { name: "Operating Systems", icon: Cpu },
-  { name: "Digital Systems", icon: GitBranch },
-  { name: "Linear Algebra", icon: FileText },
+  { name: "Algorithms 1", icon: FileText },
+  { name: "ATAM", icon: Cpu },
   { name: "General", icon: Briefcase },
 ];
 
-const TYPE_FILTERS: { name: "All" | DeadlineType; icon: React.ComponentType<{ className?: string }> }[] = [
-  { name: "All", icon: LayoutGrid },
-  { name: "Homework", icon: BookOpen },
-  { name: "Quiz/Exam", icon: GraduationCap },
-  { name: "Activity/Event", icon: Calendar },
-  { name: "Registration", icon: FileText },
-  { name: "Announcement", icon: Megaphone },
-];
-
-const STATUS_FILTERS: { name: "All" | DeadlineStatus; icon: React.ComponentType<{ className?: string }> }[] = [
-  { name: "All", icon: LayoutGrid },
-  { name: "Upcoming", icon: Clock },
-  { name: "Urgent", icon: AlertCircle },
-  { name: "Expired", icon: XCircle },
-  { name: "Completed", icon: CheckCircle2 },
-];
-
-const courseStyles: Record<Course, { text: string; bg: string; icon: React.ComponentType<{ className?: string }> }> = {
-  "Data Structures": { text: "text-sky-600", bg: "bg-sky-50", icon: BookOpen },
+const courseStyles: Record<
+  Course,
+  { text: string; bg: string; icon: React.ComponentType<{ className?: string }> }
+> = {
   "Operating Systems": { text: "text-emerald-600", bg: "bg-emerald-50", icon: Cpu },
-  "Digital Systems": { text: "text-violet-600", bg: "bg-violet-50", icon: GitBranch },
-  "Linear Algebra": { text: "text-orange-600", bg: "bg-orange-50", icon: FileText },
+  "Algorithms 1": { text: "text-sky-600", bg: "bg-sky-50", icon: FileText },
+  ATAM: { text: "text-violet-600", bg: "bg-violet-50", icon: Cpu },
   General: { text: "text-slate-600", bg: "bg-amber-50", icon: Star },
 };
 
@@ -90,17 +68,17 @@ const statusStyles: Record<DeadlineStatus, string> = {
 function Dashboard() {
   const items = Route.useLoaderData();
   const [course, setCourse] = useState<Course | "All Courses">("All Courses");
-  const [type, setType] = useState<"All" | DeadlineType>("All");
-  const [status, setStatus] = useState<"All" | DeadlineStatus>("All");
+  const [showExpired, setShowExpired] = useState(false);
+
+  const expiredCount = useMemo(() => items.filter((i) => i.status === "Expired").length, [items]);
 
   const filtered = useMemo(() => {
     return items.filter((i) => {
       if (course !== "All Courses" && i.course !== course) return false;
-      if (type !== "All" && i.type !== type) return false;
-      if (status !== "All" && i.status !== status) return false;
+      if (!showExpired && i.status === "Expired") return false;
       return true;
     });
-  }, [items, course, type, status]);
+  }, [items, course, showExpired]);
 
   return (
     <div className="flex min-h-screen bg-background text-foreground">
@@ -169,43 +147,20 @@ function Dashboard() {
           </button>
         </header>
 
-        {/* Filters */}
-        <div className="mt-6 grid grid-cols-1 gap-4 lg:grid-cols-[1fr_auto]">
-          <FilterCard label="Filter by Type">
-            {TYPE_FILTERS.map((f) => (
-              <FilterChip
-                key={f.name}
-                icon={f.icon}
-                label={f.name}
-                active={type === f.name}
-                onClick={() => setType(f.name)}
-              />
-            ))}
-          </FilterCard>
-          <FilterCard label="Filter by Status">
-            {STATUS_FILTERS.map((f) => {
-              const colorClass =
-                f.name === "Urgent"
-                  ? "text-red-500"
-                  : f.name === "Expired"
-                    ? "text-slate-400"
-                    : f.name === "Completed"
-                      ? "text-emerald-500"
-                      : f.name === "Upcoming"
-                        ? "text-blue-500"
-                        : "";
-              return (
-                <FilterChip
-                  key={f.name}
-                  icon={f.icon}
-                  label={f.name}
-                  active={status === f.name}
-                  onClick={() => setStatus(f.name)}
-                  iconClassName={colorClass}
-                />
-              );
-            })}
-          </FilterCard>
+        <div className="mt-6 flex items-center justify-between rounded-2xl border border-border bg-white px-4 py-3 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+          <p className="text-sm text-muted-foreground">
+            Showing <span className="font-semibold text-foreground">{filtered.length}</span>{" "}
+            deadline
+            {filtered.length === 1 ? "" : "s"}
+            {!showExpired && expiredCount > 0 ? ` · ${expiredCount} expired hidden` : ""}
+          </p>
+          <button
+            onClick={() => setShowExpired((v) => !v)}
+            className="inline-flex items-center gap-2 rounded-xl border border-border bg-white px-3 py-1.5 text-sm font-medium text-foreground/80 transition-colors hover:border-primary/40 hover:text-foreground"
+          >
+            {showExpired ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+            {showExpired ? "Hide Expired" : "Show Expired"}
+          </button>
         </div>
 
         {/* Items */}
@@ -214,7 +169,7 @@ function Dashboard() {
             <div className="rounded-2xl border border-dashed border-border bg-white p-12 text-center">
               <p className="text-sm font-medium">No deadlines match your filters.</p>
               <p className="mt-1 text-sm text-muted-foreground">
-                Try clearing a filter to see more items.
+                Try selecting another course or showing expired items.
               </p>
             </div>
           ) : (
@@ -226,46 +181,8 @@ function Dashboard() {
   );
 }
 
-function FilterCard({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div className="rounded-2xl border border-border bg-white p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
-      <div className="text-xs font-medium text-muted-foreground">{label}</div>
-      <div className="mt-3 flex flex-wrap gap-2">{children}</div>
-    </div>
-  );
-}
-
-function FilterChip({
-  icon: Icon,
-  label,
-  active,
-  onClick,
-  iconClassName,
-}: {
-  icon: React.ComponentType<{ className?: string }>;
-  label: string;
-  active: boolean;
-  onClick: () => void;
-  iconClassName?: string;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      className={cn(
-        "inline-flex items-center gap-2 rounded-xl border px-3 py-1.5 text-sm font-medium transition-all",
-        active
-          ? "border-primary bg-primary text-primary-foreground shadow-sm"
-          : "border-border bg-white text-foreground/80 hover:border-primary/40 hover:text-foreground",
-      )}
-    >
-      <Icon className={cn("h-4 w-4", !active && iconClassName)} />
-      {label}
-    </button>
-  );
-}
-
 function DeadlineCard({ item }: { item: DeadlineItem }) {
-  const cs = courseStyles[item.course];
+  const cs = courseStyles[item.course] ?? courseStyles.General;
   const Icon = cs.icon;
   const [datePart, timePart] = item.displayDate.split(" · ");
   return (
@@ -291,9 +208,7 @@ function DeadlineCard({ item }: { item: DeadlineItem }) {
           <Calendar className="h-4 w-4 text-muted-foreground" />
           <span className="truncate">{datePart}</span>
         </div>
-        {timePart && (
-          <div className="mt-1 text-sm text-muted-foreground">{timePart}</div>
-        )}
+        {timePart && <div className="mt-1 text-sm text-muted-foreground">{timePart}</div>}
         <div
           className={cn(
             "mt-3 inline-flex items-center rounded-md px-2 py-0.5 text-[11px] font-semibold",

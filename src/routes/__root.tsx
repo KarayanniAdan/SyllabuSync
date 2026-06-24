@@ -74,13 +74,25 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
       { title: "SyllabuSync" },
-      { name: "description", content: "SyllabuSync organizes academic deadlines, assignments, and announcements for university students." },
+      {
+        name: "description",
+        content:
+          "SyllabuSync organizes academic deadlines, assignments, and announcements for university students.",
+      },
       { property: "og:title", content: "SyllabuSync" },
-      { property: "og:description", content: "SyllabuSync organizes academic deadlines, assignments, and announcements for university students." },
+      {
+        property: "og:description",
+        content:
+          "SyllabuSync organizes academic deadlines, assignments, and announcements for university students.",
+      },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },
       { name: "twitter:title", content: "SyllabuSync" },
-      { name: "twitter:description", content: "SyllabuSync organizes academic deadlines, assignments, and announcements for university students." },
+      {
+        name: "twitter:description",
+        content:
+          "SyllabuSync organizes academic deadlines, assignments, and announcements for university students.",
+      },
     ],
     links: [
       {

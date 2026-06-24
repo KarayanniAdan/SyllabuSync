@@ -7,12 +7,7 @@ export type DeadlineType =
 
 export type DeadlineStatus = "Upcoming" | "Urgent" | "Expired" | "Completed";
 
-export type Course =
-  | "Data Structures"
-  | "Operating Systems"
-  | "Digital Systems"
-  | "Linear Algebra"
-  | "General";
+export type Course = "Operating Systems" | "Algorithms 1" | "ATAM" | "General";
 
 export interface DeadlineItem {
   id: string;
@@ -29,68 +24,46 @@ export interface DeadlineItem {
 export const mockDeadlineItems: DeadlineItem[] = [
   {
     id: "1",
-    course: "Data Structures",
-    title: "HW2",
+    course: "Operating Systems",
+    title: "HW3",
     type: "Homework",
-    dueAt: "2025-05-22T23:59:00",
-    displayDate: "Thu, May 22, 2025 · 23:59",
-    description: "Complete problems 1–5 from Chapter 3 and submit on the course site.",
+    dueAt: "2026-07-06T23:59:00",
+    displayDate: "Mon, Jul 6, 2026 · 23:59",
+    description: "Submit HW3 via the course site.",
     status: "Urgent",
-    sourceSentence: "HW2 must be submitted by Thursday at 23:59.",
+    sourceSentence: "The submission deadline is July 6th at 23:59.",
   },
   {
     id: "2",
-    course: "Operating Systems",
-    title: "Wet Assignment",
-    type: "Homework",
-    dueAt: "2025-05-25T23:59:00",
-    displayDate: "Sun, May 25, 2025 · 23:59",
-    description: "Implement the file system module and write the report.",
+    course: "Algorithms 1",
+    title: "Quiz 1",
+    type: "Quiz/Exam",
+    dueAt: "2026-07-08T10:00:00",
+    displayDate: "Wed, Jul 8, 2026 · 10:00",
+    description: "Covers divide-and-conquer and graph basics.",
     status: "Upcoming",
-    sourceSentence: "The wet assignment deadline is Sunday at 23:59.",
+    sourceSentence: "Quiz 1 will take place on Wednesday at 10:00.",
   },
   {
     id: "3",
-    course: "Digital Systems",
-    title: "Lab Report",
+    course: "ATAM",
+    title: "Lab 2 Report",
     type: "Homework",
-    dueAt: "2025-05-26T12:00:00",
-    displayDate: "Mon, May 26, 2025 · 12:00",
-    description: "Submit the lab report and simulation results.",
+    dueAt: "2026-07-10T12:00:00",
+    displayDate: "Fri, Jul 10, 2026 · 12:00",
+    description: "Submit the ATAM lab report and assembly results.",
     status: "Upcoming",
-    sourceSentence: "The lab report should be submitted by Monday at 12:00.",
+    sourceSentence: "Lab 2 report must be submitted by Friday at noon.",
   },
   {
     id: "4",
-    course: "Linear Algebra",
-    title: "Quiz 2",
-    type: "Quiz/Exam",
-    dueAt: "2025-05-28T10:30:00",
-    displayDate: "Wed, May 28, 2025 · 10:30",
-    description: "Covers lectures 1–7.",
-    status: "Upcoming",
-    sourceSentence: "Quiz 2 will take place on Wednesday at 10:30.",
-  },
-  {
-    id: "5",
     course: "General",
-    title: "Hackathon Registration",
-    type: "Registration",
-    dueAt: "2025-05-20T23:59:00",
-    displayDate: "Tue, May 20, 2025 · 23:59",
-    description: "Register your team for the university hackathon.",
+    title: "Semester Registration Window",
+    type: "Announcement",
+    dueAt: "2026-07-12T23:59:00",
+    displayDate: "Sun, Jul 12, 2026 · 23:59",
+    description: "Important registration notice for all students.",
     status: "Expired",
-    sourceSentence: "Registration for the hackathon closes on May 20.",
-  },
-  {
-    id: "6",
-    course: "General",
-    title: "Resume Workshop",
-    type: "Activity/Event",
-    dueAt: "2025-05-21T14:00:00",
-    displayDate: "Wed, May 21, 2025 · 14:00",
-    description: "Learn how to build a strong resume.",
-    status: "Upcoming",
-    sourceSentence: "The resume workshop will take place on May 21 at 14:00.",
+    sourceSentence: "Registration closes on July 12.",
   },
 ];

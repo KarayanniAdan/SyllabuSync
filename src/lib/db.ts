@@ -1,6 +1,6 @@
 import { readFileSync, writeFileSync, existsSync } from "fs";
 import { join } from "path";
-import type { DeadlineItem } from "../data/mockDeadlineItems";
+import type { DeadlineItem, DeadlineStatus } from "../data/mockDeadlineItems";
 
 const DATA_PATH = join(process.cwd(), "data.json");
 const PROCESSED_PATH = join(process.cwd(), "processed-messages.json");
@@ -33,6 +33,38 @@ function compareByDueAt(a: DeadlineItem, b: DeadlineItem): number {
   return a.title.localeCompare(b.title);
 }
 
+function computeStatus(item: DeadlineItem): DeadlineStatus {
+  if (item.status === "Completed") return "Completed";
+
+  const dueTs = toTimestampOrNull(item.dueAt);
+  if (dueTs === null) return "Upcoming";
+
+  const diff = dueTs - Date.now();
+  if (diff < 0) return "Expired";
+  if (diff < 48 * 60 * 60 * 1000) return "Urgent";
+  return "Upcoming";
+}
+
+function normalizeTitleKey(title: string): string {
+  return title
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function findLogicalDuplicateIndex(items: DeadlineItem[], incoming: DeadlineItem): number {
+  const incomingTitleKey = normalizeTitleKey(incoming.title);
+
+  return items.findIndex((existing) => {
+    return (
+      existing.course === incoming.course &&
+      existing.type === incoming.type &&
+      normalizeTitleKey(existing.title) === incomingTitleKey
+    );
+  });
+}
+
 function readProcessed(): Set<string> {
   if (!existsSync(PROCESSED_PATH)) return new Set();
   return new Set(JSON.parse(readFileSync(PROCESSED_PATH, "utf-8")) as string[]);
@@ -57,13 +89,28 @@ function readData(): DeadlineItem[] {
 }
 
 export function getAllDeadlines(): DeadlineItem[] {
-  return readData().sort(compareByDueAt);
+  return readData()
+    .map((item) => ({ ...item, status: computeStatus(item) }))
+    .sort(compareByDueAt);
 }
 
 export function saveDeadline(item: DeadlineItem): void {
   const items = readData();
   const idx = items.findIndex((i) => i.id === item.id);
-  if (idx >= 0) items[idx] = item;
-  else items.push(item);
+  if (idx >= 0) {
+    items[idx] = item;
+  } else {
+    const logicalIdx = findLogicalDuplicateIndex(items, item);
+    if (logicalIdx >= 0) {
+      const existing = items[logicalIdx];
+      items[logicalIdx] = {
+        ...item,
+        id: existing.id,
+        status: existing.status === "Completed" ? "Completed" : item.status,
+      };
+    } else {
+      items.push(item);
+    }
+  }
   writeFileSync(DATA_PATH, JSON.stringify(items, null, 2), "utf-8");
 }

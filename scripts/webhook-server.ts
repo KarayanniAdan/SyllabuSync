@@ -30,7 +30,10 @@ const server = Bun.serve({
 
         let gmailMessageId = "";
 
-        if (contentType.includes("multipart/form-data") || contentType.includes("application/x-www-form-urlencoded")) {
+        if (
+          contentType.includes("multipart/form-data") ||
+          contentType.includes("application/x-www-form-urlencoded")
+        ) {
           const form = await req.formData();
           subject = (form.get("subject") as string) ?? "(no subject)";
           emailBody = (form.get("body-plain") as string) ?? (form.get("body-html") as string) ?? "";
