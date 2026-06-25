@@ -7,6 +7,7 @@
 import "dotenv/config";
 import { extractFromEmail } from "../src/lib/extract";
 import { saveDeadline, isMessageProcessed, markMessageProcessed } from "../src/lib/db";
+import { buildInboundIdempotencyKey } from "../src/lib/inbound-idempotency";
 
 const PORT = 3002;
 
@@ -28,7 +29,7 @@ const server = Bun.serve({
         let emailBody = "";
         let emailFrom = "";
 
-        let gmailMessageId = "";
+        let gmailMessageId: string | null = null;
 
         if (
           contentType.includes("multipart/form-data") ||
@@ -38,18 +39,25 @@ const server = Bun.serve({
           subject = (form.get("subject") as string) ?? "(no subject)";
           emailBody = (form.get("body-plain") as string) ?? (form.get("body-html") as string) ?? "";
           emailFrom = (form.get("from") as string) ?? "";
-          gmailMessageId = (form.get("gmailMessageId") as string) ?? "";
+          gmailMessageId = (form.get("gmailMessageId") as string) ?? null;
         } else {
           const json = (await req.json()) as Record<string, string>;
           subject = json["subject"] ?? "(no subject)";
           emailBody = json["body-plain"] ?? json["body"] ?? "";
           emailFrom = json["from"] ?? "";
-          gmailMessageId = json["gmailMessageId"] ?? "";
+          gmailMessageId = json["gmailMessageId"] ?? null;
         }
 
-        // Deduplicate by Gmail message ID
-        if (gmailMessageId && isMessageProcessed(gmailMessageId)) {
-          console.log(`\n⏭️  Already processed: "${subject}" (${gmailMessageId})`);
+        const idempotencyKey = buildInboundIdempotencyKey(
+          subject,
+          emailBody,
+          emailFrom,
+          gmailMessageId,
+        );
+
+        // Deduplicate by normalized Gmail message ID or deterministic content signature.
+        if (isMessageProcessed(idempotencyKey)) {
+          console.log(`\n⏭️  Already processed: "${subject}" (${idempotencyKey})`);
           return Response.json({ ok: true, extracted: 0, reason: "already processed" });
         }
 
@@ -71,7 +79,7 @@ const server = Bun.serve({
           console.log(`   ✅ Saved: [${item.course}] ${item.title} — ${item.displayDate}`);
         }
 
-        if (gmailMessageId) markMessageProcessed(gmailMessageId);
+        markMessageProcessed(idempotencyKey);
 
         return Response.json({ ok: true, extracted: result.items.length });
       } catch (err) {

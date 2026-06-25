@@ -53,16 +53,89 @@ function normalizeTitleKey(title: string): string {
     .trim();
 }
 
-function findLogicalDuplicateIndex(items: DeadlineItem[], incoming: DeadlineItem): number {
-  const incomingTitleKey = normalizeTitleKey(incoming.title);
+function normalizeSemanticTitleKey(item: DeadlineItem): string {
+  const base = normalizeTitleKey(item.title);
 
-  return items.findIndex((existing) => {
-    return (
-      existing.course === incoming.course &&
-      existing.type === incoming.type &&
-      normalizeTitleKey(existing.title) === incomingTitleKey
-    );
-  });
+  if (item.type !== "Homework") return base;
+
+  const canonical = base
+    .replace(/\bhome\s*work\b/g, "homework")
+    .replace(/\bexercise\b/g, "assignment");
+
+  const numberMatch = canonical.match(/\b(?:hw|homework|assignment)\s*(\d{1,3})\b/);
+  if (numberMatch) return `hw${numberMatch[1]}`;
+
+  const reverseNumberMatch = canonical.match(/\b(\d{1,3})\s*(?:hw|homework|assignment)\b/);
+  if (reverseNumberMatch) return `hw${reverseNumberMatch[1]}`;
+
+  return canonical;
+}
+
+function isLikelySameAssignmentWindow(existing: DeadlineItem, incoming: DeadlineItem): boolean {
+  const existingTs = toTimestampOrNull(existing.dueAt);
+  const incomingTs = toTimestampOrNull(incoming.dueAt);
+  if (existingTs === null || incomingTs === null) return true;
+
+  const diffDays = Math.abs(existingTs - incomingTs) / (24 * 60 * 60 * 1000);
+  return diffDays <= 120;
+}
+
+function isLogicalDuplicate(existing: DeadlineItem, incoming: DeadlineItem): boolean {
+  return (
+    existing.course === incoming.course &&
+    existing.type === incoming.type &&
+    normalizeSemanticTitleKey(existing) === normalizeSemanticTitleKey(incoming) &&
+    isLikelySameAssignmentWindow(existing, incoming)
+  );
+}
+
+function findLogicalDuplicateIndex(items: DeadlineItem[], incoming: DeadlineItem): number {
+  return items.findIndex((existing) => isLogicalDuplicate(existing, incoming));
+}
+
+function mergeDuplicate(base: DeadlineItem, incoming: DeadlineItem): DeadlineItem {
+  const baseDueTs = toTimestampOrNull(base.dueAt);
+  const incomingDueTs = toTimestampOrNull(incoming.dueAt);
+
+  const preferIncomingDueAt =
+    incomingDueTs !== null && (baseDueTs === null || incomingDueTs >= baseDueTs);
+
+  const description =
+    incoming.description.trim().length >= base.description.trim().length
+      ? incoming.description
+      : base.description;
+  const sourceSentence =
+    incoming.sourceSentence.trim().length >= base.sourceSentence.trim().length
+      ? incoming.sourceSentence
+      : base.sourceSentence;
+
+  return {
+    ...base,
+    dueAt: preferIncomingDueAt ? incoming.dueAt : base.dueAt,
+    displayDate: preferIncomingDueAt ? incoming.displayDate : base.displayDate,
+    description,
+    sourceSentence,
+    status:
+      base.status === "Completed" || incoming.status === "Completed"
+        ? "Completed"
+        : incoming.status,
+  };
+}
+
+function dedupeDeadlines(items: DeadlineItem[]): DeadlineItem[] {
+  const deduped: DeadlineItem[] = [];
+
+  for (const item of items) {
+    const existingIdx = deduped.findIndex((existing) => isLogicalDuplicate(existing, item));
+    if (existingIdx < 0) {
+      deduped.push(item);
+      continue;
+    }
+
+    deduped[existingIdx] = mergeDuplicate(deduped[existingIdx], item);
+  }
+
+  return deduped;
 }
 
 function readProcessed(): Set<string> {
@@ -85,7 +158,15 @@ function readData(): DeadlineItem[] {
     writeFileSync(DATA_PATH, JSON.stringify([], null, 2), "utf-8");
     return [];
   }
-  return JSON.parse(readFileSync(DATA_PATH, "utf-8")) as DeadlineItem[];
+
+  const parsed = JSON.parse(readFileSync(DATA_PATH, "utf-8")) as DeadlineItem[];
+  const deduped = dedupeDeadlines(parsed);
+
+  if (deduped.length !== parsed.length) {
+    writeFileSync(DATA_PATH, JSON.stringify(deduped, null, 2), "utf-8");
+  }
+
+  return deduped;
 }
 
 export function getAllDeadlines(): DeadlineItem[] {
