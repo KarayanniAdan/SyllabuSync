@@ -18,7 +18,14 @@ import type { Course, DeadlineItem, DeadlineStatus } from "@/data/mockDeadlineIt
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/")({
-  loader: () => getDeadlines(),
+  loader: async () => {
+    try {
+      return await getDeadlines();
+    } catch (error) {
+      console.error("Deadlines loader failed, rendering empty dashboard", error);
+      return [];
+    }
+  },
   head: () => ({
     meta: [
       { title: "SyllabuSync — Academic Deadlines Dashboard" },
