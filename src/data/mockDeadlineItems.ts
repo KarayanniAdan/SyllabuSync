@@ -7,10 +7,13 @@ export type DeadlineType =
 
 export type DeadlineStatus = "Upcoming" | "Urgent" | "Expired" | "Completed";
 
+export type DeadlineCategory = "Course" | "Other";
+
 export type Course = "Operating Systems" | "Algorithms 1" | "ATAM" | "General";
 
 export interface DeadlineItem {
   id: string;
+  category: DeadlineCategory;
   course: Course;
   title: string;
   type: DeadlineType;
@@ -24,6 +27,7 @@ export interface DeadlineItem {
 export const mockDeadlineItems: DeadlineItem[] = [
   {
     id: "1",
+    category: "Course",
     course: "Operating Systems",
     title: "HW3",
     type: "Homework",
@@ -35,6 +39,7 @@ export const mockDeadlineItems: DeadlineItem[] = [
   },
   {
     id: "2",
+    category: "Course",
     course: "Algorithms 1",
     title: "Quiz 1",
     type: "Quiz/Exam",
@@ -46,6 +51,7 @@ export const mockDeadlineItems: DeadlineItem[] = [
   },
   {
     id: "3",
+    category: "Course",
     course: "ATAM",
     title: "Lab 2 Report",
     type: "Homework",
@@ -57,6 +63,7 @@ export const mockDeadlineItems: DeadlineItem[] = [
   },
   {
     id: "4",
+    category: "Other",
     course: "General",
     title: "Semester Registration Window",
     type: "Announcement",

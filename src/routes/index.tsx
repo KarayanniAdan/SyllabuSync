@@ -14,7 +14,12 @@ import {
   Star,
   Sparkles,
 } from "lucide-react";
-import type { Course, DeadlineItem, DeadlineStatus } from "@/data/mockDeadlineItems";
+import type {
+  Course,
+  DeadlineCategory,
+  DeadlineItem,
+  DeadlineStatus,
+} from "@/data/mockDeadlineItems";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/")({
@@ -57,7 +62,15 @@ const COURSES: {
   { name: "Operating Systems", icon: Cpu },
   { name: "Algorithms 1", icon: FileText },
   { name: "ATAM", icon: Cpu },
-  { name: "General", icon: Briefcase },
+];
+
+const CATEGORY_OPTIONS: {
+  name: "All" | "Courses" | "Other";
+  icon: React.ComponentType<{ className?: string }>;
+}[] = [
+  { name: "All", icon: LayoutGrid },
+  { name: "Courses", icon: GraduationCap },
+  { name: "Other", icon: Briefcase },
 ];
 
 const courseStyles: Record<
@@ -70,6 +83,18 @@ const courseStyles: Record<
   General: { text: "text-slate-600", bg: "bg-amber-50", icon: Star },
 };
 
+function getItemCategory(item: DeadlineItem): DeadlineCategory {
+  return item.category ?? (item.type === "Homework" || item.type === "Quiz/Exam" ? "Course" : "Other");
+}
+
+function getCategoryLabel(item: DeadlineItem): string {
+  return getItemCategory(item) === "Other" ? "Other" : item.course;
+}
+
+function getOtherTypeLabel(type: DeadlineItem["type"]): string {
+  return type;
+}
+
 const statusStyles: Record<DeadlineStatus, string> = {
   Upcoming: "bg-blue-50 text-blue-700 ring-1 ring-blue-100",
   Urgent: "bg-red-50 text-red-700 ring-1 ring-red-100",
@@ -80,17 +105,25 @@ const statusStyles: Record<DeadlineStatus, string> = {
 function Dashboard() {
   const items = Route.useLoaderData();
   const [course, setCourse] = useState<Course | "All Courses">("All Courses");
+  const [category, setCategory] = useState<(typeof CATEGORY_OPTIONS)[number]["name"]>("All");
   const [showExpired, setShowExpired] = useState(false);
 
   const expiredCount = useMemo(() => items.filter((i) => i.status === "Expired").length, [items]);
 
   const filtered = useMemo(() => {
     return items.filter((i) => {
-      if (course !== "All Courses" && i.course !== course) return false;
+      const itemCategory = getItemCategory(i);
+
+      if (category === "Courses" && itemCategory !== "Course") return false;
+      if (category === "Other" && itemCategory !== "Other") return false;
+
+      if (course !== "All Courses" && itemCategory === "Course" && i.course !== course) return false;
+      if (course !== "All Courses" && itemCategory === "Other") return false;
+
       if (!showExpired && i.status === "Expired") return false;
       return true;
     });
-  }, [items, course, showExpired]);
+  }, [items, category, course, showExpired]);
 
   return (
     <div className="flex min-h-screen bg-background text-foreground">
@@ -108,16 +141,47 @@ function Dashboard() {
 
         <div className="mt-9">
           <div className="px-3 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+            Categories
+          </div>
+          <nav className="mt-3 flex flex-col gap-1">
+            {CATEGORY_OPTIONS.map((c) => {
+              const Icon = c.icon;
+              const active = category === c.name;
+              return (
+                <button
+                  key={c.name}
+                  onClick={() => {
+                    setCategory(c.name);
+                    if (c.name !== "Courses") setCourse("All Courses");
+                  }}
+                  className={cn(
+                    "flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors",
+                    active
+                      ? "bg-[var(--primary-soft)] text-primary"
+                      : "text-foreground/80 hover:bg-secondary hover:text-foreground",
+                  )}
+                >
+                  <Icon className="h-[18px] w-[18px]" />
+                  <span className="truncate">{c.name}</span>
+                </button>
+              );
+            })}
+          </nav>
+
+          <div className="mt-8 px-3 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
             Courses
           </div>
           <nav className="mt-3 flex flex-col gap-1">
             {COURSES.map((c) => {
               const Icon = c.icon;
-              const active = course === c.name;
+              const active = course === c.name && category === "Courses";
               return (
                 <button
                   key={c.name}
-                  onClick={() => setCourse(c.name)}
+                  onClick={() => {
+                    setCategory("Courses");
+                    setCourse(c.name);
+                  }}
                   className={cn(
                     "flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors",
                     active
@@ -194,7 +258,8 @@ function Dashboard() {
 }
 
 function DeadlineCard({ item }: { item: DeadlineItem }) {
-  const cs = courseStyles[item.course] ?? courseStyles.General;
+  const itemCategory = getItemCategory(item);
+  const cs = itemCategory === "Course" ? courseStyles[item.course] ?? courseStyles.General : courseStyles.General;
   const Icon = cs.icon;
   const [datePart, timePart] = item.displayDate.split(" · ");
   return (
@@ -204,10 +269,19 @@ function DeadlineCard({ item }: { item: DeadlineItem }) {
       </div>
 
       <div className="min-w-0">
-        <div className={cn("text-sm font-medium", cs.text)}>{item.course}</div>
+        <div className={cn("text-sm font-medium", cs.text)}>{getCategoryLabel(item)}</div>
         <h3 className="mt-0.5 truncate text-lg font-semibold text-foreground">{item.title}</h3>
         <p className="mt-1.5 text-sm text-muted-foreground">{item.description}</p>
         <p className="mt-2 text-xs text-muted-foreground/80">
+          <span className="font-medium text-muted-foreground">Type:</span> {getOtherTypeLabel(item.type)}
+          {itemCategory === "Course" ? (
+            <>
+              <span className="mx-2 text-muted-foreground/40">•</span>
+              <span className="font-medium text-muted-foreground">Course:</span> {item.course}
+            </>
+          ) : null}
+        </p>
+        <p className="mt-1.5 text-xs text-muted-foreground/80">
           <span className="font-medium text-muted-foreground">Source:</span> “{item.sourceSentence}”
         </p>
         <div className="mt-3 inline-flex items-center gap-1.5 rounded-md bg-secondary px-2 py-0.5 text-[11px] font-medium text-secondary-foreground">

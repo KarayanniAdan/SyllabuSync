@@ -1,9 +1,16 @@
 import OpenAI from "openai";
 import "dotenv/config";
-import type { DeadlineItem, Course, DeadlineType, DeadlineStatus } from "../data/mockDeadlineItems";
+import type {
+  DeadlineItem,
+  DeadlineCategory,
+  Course,
+  DeadlineType,
+  DeadlineStatus,
+} from "../data/mockDeadlineItems";
 import { randomUUID } from "crypto";
 
 const SUPPORTED_COURSES: Course[] = ["Operating Systems", "Algorithms 1", "ATAM", "General"];
+const COURSE_ITEM_TYPES: DeadlineType[] = ["Homework", "Quiz/Exam"];
 
 const COURSE_HINTS: Array<{ course: Exclude<Course, "General">; patterns: RegExp[] }> = [
   {
@@ -27,6 +34,10 @@ function inferCourseFromText(text: string): Exclude<Course, "General"> | null {
     }
   }
   return null;
+}
+
+function classifyItemCategory(type: DeadlineType): DeadlineCategory {
+  return COURSE_ITEM_TYPES.includes(type) ? "Course" : "Other";
 }
 
 const client = new OpenAI({
@@ -204,15 +215,19 @@ export async function extractFromEmail(
   // Assign unique IDs to each extracted item
   const items: DeadlineItem[] = parsed.items
     .map((item) => {
+      const category = classifyItemCategory(item.type as DeadlineType);
       const normalizedCourse: Course = SUPPORTED_COURSES.includes(item.course as Course)
         ? (item.course as Course)
         : "General";
       const finalCourse: Course =
-        normalizedCourse === "General" && inferredCourse ? inferredCourse : normalizedCourse;
+        category === "Course" && normalizedCourse === "General" && inferredCourse
+          ? inferredCourse
+          : normalizedCourse;
 
       return {
         ...item,
         id: randomUUID(),
+        category,
         course: finalCourse,
         type: item.type as DeadlineType,
         status: item.status as DeadlineStatus,

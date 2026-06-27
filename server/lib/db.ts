@@ -1,6 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 
-import type { DeadlineItem } from "../../src/data/mockDeadlineItems";
+import type { DeadlineCategory, DeadlineItem } from "../../src/data/mockDeadlineItems";
 
 const supabaseUrl = process.env.SUPABASE_URL;
 const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -16,9 +16,14 @@ const supabase = createClient(supabaseUrl, supabaseServiceRoleKey, {
   },
 });
 
+function getItemCategory(item: Pick<DeadlineItem, "type" | "course">): DeadlineCategory {
+  return item.type === "Homework" || item.type === "Quiz/Exam" ? "Course" : "Other";
+}
+
 function rowToDeadlineItem(row: any): DeadlineItem {
   return {
     id: row.id,
+    category: row.category ?? getItemCategory(row),
     course: row.course,
     title: row.title,
     type: row.type,
@@ -47,6 +52,7 @@ export async function saveDeadline(item: DeadlineItem): Promise<void> {
   const { error } = await supabase.from("deadline_items").upsert(
     {
       id: item.id,
+      category: item.category ?? getItemCategory(item),
       course: item.course,
       title: item.title,
       type: item.type,

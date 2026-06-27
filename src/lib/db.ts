@@ -1,9 +1,13 @@
 import { readFileSync, writeFileSync, existsSync } from "fs";
 import { join } from "path";
-import type { DeadlineItem, DeadlineStatus } from "../data/mockDeadlineItems";
+import type { DeadlineCategory, DeadlineItem, DeadlineStatus } from "../data/mockDeadlineItems";
 
 const DATA_PATH = join(process.cwd(), "data.json");
 const PROCESSED_PATH = join(process.cwd(), "processed-messages.json");
+
+function getItemCategory(item: Pick<DeadlineItem, "type" | "course">): DeadlineCategory {
+  return item.type === "Homework" || item.type === "Quiz/Exam" ? "Course" : "Other";
+}
 
 function toTimestampOrNull(dueAt: string): number | null {
   const ts = Date.parse(dueAt);
@@ -171,26 +175,34 @@ function readData(): DeadlineItem[] {
 
 export function getAllDeadlines(): DeadlineItem[] {
   return readData()
-    .map((item) => ({ ...item, status: computeStatus(item) }))
+    .map((item) => ({
+      ...item,
+      category: item.category ?? getItemCategory(item),
+      status: computeStatus(item),
+    }))
     .sort(compareByDueAt);
 }
 
 export function saveDeadline(item: DeadlineItem): void {
   const items = readData();
+  const normalizedItem = {
+    ...item,
+    category: item.category ?? getItemCategory(item),
+  };
   const idx = items.findIndex((i) => i.id === item.id);
   if (idx >= 0) {
-    items[idx] = item;
+    items[idx] = normalizedItem;
   } else {
-    const logicalIdx = findLogicalDuplicateIndex(items, item);
+    const logicalIdx = findLogicalDuplicateIndex(items, normalizedItem);
     if (logicalIdx >= 0) {
       const existing = items[logicalIdx];
       items[logicalIdx] = {
-        ...item,
+        ...normalizedItem,
         id: existing.id,
-        status: existing.status === "Completed" ? "Completed" : item.status,
+        status: existing.status === "Completed" ? "Completed" : normalizedItem.status,
       };
     } else {
-      items.push(item);
+      items.push(normalizedItem);
     }
   }
   writeFileSync(DATA_PATH, JSON.stringify(items, null, 2), "utf-8");
