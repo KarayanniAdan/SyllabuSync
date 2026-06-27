@@ -1,7 +1,11 @@
-import { createServerFn } from "@tanstack/react-start";
 import type { DeadlineItem } from "@/data/mockDeadlineItems";
 
-export const getDeadlines = createServerFn().handler(async (): Promise<DeadlineItem[]> => {
-  const { getAllDeadlines } = await import("../lib/db");
-  return getAllDeadlines();
-});
+export async function getDeadlines(): Promise<DeadlineItem[]> {
+  const response = await fetch("/api/deadlines");
+
+  if (!response.ok) {
+    throw new Error(`Failed to fetch deadlines: ${response.status}`);
+  }
+
+  return response.json();
+}

@@ -1,7 +1,11 @@
 import { defineEventHandler, readBody } from "h3";
 import "dotenv/config";
 import { extractFromEmail } from "../../src/lib/extract";
-import { saveDeadline, isMessageProcessed, markMessageProcessed } from "../../src/lib/db";
+import {
+  saveDeadline,
+  isMessageProcessed,
+  markMessageProcessed,
+} from "../lib/db";
 import { buildInboundIdempotencyKey } from "../../src/lib/inbound-idempotency";
 
 // Mailgun sends form-encoded POST data with these fields:
@@ -10,21 +14,38 @@ import { buildInboundIdempotencyKey } from "../../src/lib/inbound-idempotency";
 // - body-html: HTML body
 // - from: sender address
 // - recipient: the address it was sent to
+//
+// Our manual PowerShell / Apps Script test sends:
+// - body: email body
+
+function asString(value: unknown): string {
+  return typeof value === "string" ? value : "";
+}
 
 export default defineEventHandler(async (event) => {
-  const body = await readBody(event);
+  const body = await readBody<Record<string, unknown>>(event);
+  console.log("DEBUG BODY:", body);
 
-  const subject: string = body["subject"] ?? "(no subject)";
-  const emailBody: string = body["body-plain"] ?? body["body-html"] ?? "";
-  const emailFrom: string = body["from"] ?? "";
+  const subject: string = asString(body["subject"]) || "(no subject)";
+
+  const emailBody: string =
+    asString(body["body"]) ||
+    asString(body["body-plain"]) ||
+    asString(body["body-html"]);
+
+  const emailFrom: string = asString(body["from"]);
+  const gmailMessageId: string = asString(body["gmailMessageId"]);
+
+  console.log("DEBUG EMAIL BODY LENGTH:", emailBody.length);
+
   const idempotencyKey = buildInboundIdempotencyKey(
     subject,
     emailBody,
     emailFrom,
-    body["gmailMessageId"],
+    gmailMessageId,
   );
 
-  if (isMessageProcessed(idempotencyKey)) {
+  if (await isMessageProcessed(idempotencyKey)) {
     return { ok: true, extracted: 0, reason: "already processed" };
   }
 
@@ -34,15 +55,18 @@ export default defineEventHandler(async (event) => {
 
   const result = await extractFromEmail(subject, emailBody, emailFrom);
 
+  console.log("DEBUG EXTRACT RESULT:", result);
+
   if (!result.relevant || result.items.length === 0) {
     return { ok: true, extracted: 0, reason: "not relevant" };
   }
 
   for (const item of result.items) {
-    saveDeadline(item);
+    console.log("DEBUG SAVING ITEM:", item);
+    await saveDeadline(item);
   }
 
-  markMessageProcessed(idempotencyKey);
+  await markMessageProcessed(idempotencyKey);
 
   return { ok: true, extracted: result.items.length };
 });
