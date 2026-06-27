@@ -20,6 +20,11 @@ import { cn } from "@/lib/utils";
 export const Route = createFileRoute("/")({
   loader: async () => {
     try {
+      if (import.meta.env.SSR) {
+        const { getAllDeadlines } = await import("../../server/lib/db");
+        return await getAllDeadlines();
+      }
+
       return await getDeadlines();
     } catch (error) {
       console.error("Deadlines loader failed, rendering empty dashboard", error);
