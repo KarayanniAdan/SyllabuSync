@@ -9,7 +9,13 @@ import type {
 } from "../data/mockDeadlineItems";
 import { randomUUID } from "crypto";
 
-const SUPPORTED_COURSES: Course[] = ["Operating Systems", "Algorithms 1", "ATAM", "General"];
+const SUPPORTED_COURSES: Course[] = [
+  "Operating Systems",
+  "Algorithms 1",
+  "ATAM",
+  "System Programming",
+  "General",
+];
 const COURSE_ITEM_TYPES: DeadlineType[] = ["Homework", "Quiz/Exam"];
 
 const COURSE_HINTS: Array<{ course: Exclude<Course, "General">; patterns: RegExp[] }> = [
@@ -24,6 +30,10 @@ const COURSE_HINTS: Array<{ course: Exclude<Course, "General">; patterns: RegExp
   {
     course: "ATAM",
     patterns: [/02340118/i, /\batam\b/i, /ארגון\s*ותכנות\s*המחשב/, /את"?ם/],
+  },
+  {
+    course: "System Programming",
+    patterns: [/\bsystem\s*programming\b/i, /מערכות\s*תכנות/i],
   },
 ];
 

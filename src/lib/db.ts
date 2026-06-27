@@ -98,31 +98,11 @@ function findLogicalDuplicateIndex(items: DeadlineItem[], incoming: DeadlineItem
 }
 
 function mergeDuplicate(base: DeadlineItem, incoming: DeadlineItem): DeadlineItem {
-  const baseDueTs = toTimestampOrNull(base.dueAt);
-  const incomingDueTs = toTimestampOrNull(incoming.dueAt);
-
-  const preferIncomingDueAt =
-    incomingDueTs !== null && (baseDueTs === null || incomingDueTs >= baseDueTs);
-
-  const description =
-    incoming.description.trim().length >= base.description.trim().length
-      ? incoming.description
-      : base.description;
-  const sourceSentence =
-    incoming.sourceSentence.trim().length >= base.sourceSentence.trim().length
-      ? incoming.sourceSentence
-      : base.sourceSentence;
-
   return {
     ...base,
-    dueAt: preferIncomingDueAt ? incoming.dueAt : base.dueAt,
-    displayDate: preferIncomingDueAt ? incoming.displayDate : base.displayDate,
-    description,
-    sourceSentence,
-    status:
-      base.status === "Completed" || incoming.status === "Completed"
-        ? "Completed"
-        : incoming.status,
+    ...incoming,
+    id: base.id,
+    status: incoming.status,
   };
 }
 
@@ -199,7 +179,7 @@ export function saveDeadline(item: DeadlineItem): void {
       items[logicalIdx] = {
         ...normalizedItem,
         id: existing.id,
-        status: existing.status === "Completed" ? "Completed" : normalizedItem.status,
+        status: normalizedItem.status,
       };
     } else {
       items.push(normalizedItem);

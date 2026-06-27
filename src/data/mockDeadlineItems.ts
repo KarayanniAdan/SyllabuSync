@@ -9,7 +9,7 @@ export type DeadlineStatus = "Upcoming" | "Urgent" | "Expired" | "Completed";
 
 export type DeadlineCategory = "Course" | "Other";
 
-export type Course = "Operating Systems" | "Algorithms 1" | "ATAM" | "General";
+export type Course = "Operating Systems" | "Algorithms 1" | "ATAM" | "System Programming" | "General";
 
 export interface DeadlineItem {
   id: string;

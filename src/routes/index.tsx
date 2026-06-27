@@ -62,6 +62,7 @@ const COURSES: {
   { name: "Operating Systems", icon: Cpu },
   { name: "Algorithms 1", icon: FileText },
   { name: "ATAM", icon: Cpu },
+  { name: "System Programming", icon: Cpu },
 ];
 
 const CATEGORY_OPTIONS: {
@@ -80,6 +81,7 @@ const courseStyles: Record<
   "Operating Systems": { text: "text-emerald-600", bg: "bg-emerald-50", icon: Cpu },
   "Algorithms 1": { text: "text-sky-600", bg: "bg-sky-50", icon: FileText },
   ATAM: { text: "text-violet-600", bg: "bg-violet-50", icon: Cpu },
+  "System Programming": { text: "text-rose-600", bg: "bg-rose-50", icon: Cpu },
   General: { text: "text-slate-600", bg: "bg-amber-50", icon: Star },
 };
 
