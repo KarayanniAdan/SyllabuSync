@@ -21,7 +21,7 @@ const COURSE_ITEM_TYPES: DeadlineType[] = ["Homework", "Quiz/Exam"];
 const COURSE_HINTS: Array<{ course: Exclude<Course, "General">; patterns: RegExp[] }> = [
   {
     course: "Operating Systems",
-    patterns: [/02340123/i, /02340124/i, /operating\s*systems?/i, /מערכות\s*הפעלה/],
+    patterns: [/02340123/i, /operating\s*systems?/i, /מערכות\s*הפעלה/],
   },
   {
     course: "Algorithms 1",
@@ -33,7 +33,7 @@ const COURSE_HINTS: Array<{ course: Exclude<Course, "General">; patterns: RegExp
   },
   {
     course: "System Programming",
-    patterns: [/\bsystem\s*programming\b/i, /מערכות\s*תכנות/i],
+    patterns: [/02340124/i, /\bsystem\s*programming\b/i, /מערכות\s*תכנות/i],
   },
 ];
 
@@ -195,6 +195,99 @@ function normalizeHomeworkDeadlineText(item: DeadlineItem): DeadlineItem {
   };
 }
 
+const WEEKDAY_INDEX: Record<string, number> = {
+  sunday: 0,
+  monday: 1,
+  tuesday: 2,
+  wednesday: 3,
+  thursday: 4,
+  friday: 5,
+  saturday: 6,
+};
+
+function nextWeekdayAtTime(weekday: number, hour: number, minute: number): Date {
+  const now = new Date();
+  const target = new Date(now);
+  target.setSeconds(0, 0);
+  target.setHours(hour, minute, 0, 0);
+
+  const currentWeekday = now.getDay();
+  let dayDelta = (weekday - currentWeekday + 7) % 7;
+
+  // If the target time for "today" already passed, move to next week.
+  if (dayDelta === 0 && target.getTime() <= now.getTime()) {
+    dayDelta = 7;
+  }
+
+  target.setDate(now.getDate() + dayDelta);
+  return target;
+}
+
+function toLocalIsoNoTimezone(date: Date): string {
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}:00`;
+}
+
+function toDisplayDate(date: Date): string {
+  const weekday = new Intl.DateTimeFormat("en-US", { weekday: "short" }).format(date);
+  const month = new Intl.DateTimeFormat("en-US", { month: "short" }).format(date);
+  const day = new Intl.DateTimeFormat("en-US", { day: "numeric" }).format(date);
+  const year = new Intl.DateTimeFormat("en-US", { year: "numeric" }).format(date);
+  const hh = String(date.getHours()).padStart(2, "0");
+  const mm = String(date.getMinutes()).padStart(2, "0");
+  return `${weekday}, ${month} ${day}, ${year} · ${hh}:${mm}`;
+}
+
+function tryHeuristicFallbackExtraction(
+  subject: string,
+  body: string,
+  emailFrom: string | undefined,
+  inferredCourse: Exclude<Course, "General"> | null,
+): DeadlineItem[] {
+  const text = `${subject}\n${body}`;
+  const lower = text.toLowerCase();
+
+  const looksHomework = /\b(hw|homework|assignment|exercise)\b|תרגיל\s*בית|מטלה/.test(lower);
+  const hasDeadlineSignal = /\bdue\b|\bdeadline\b|submit|submission|להגיש|הגשה/.test(lower);
+  if (!looksHomework || !hasDeadlineSignal) return [];
+
+  const hwNumber = text.match(/(?:\bHW\b|homework|assignment)\s*(\d{1,3})/i)?.[1];
+  const title = hwNumber ? `HW${hwNumber}` : "Homework";
+
+  let dueAt = "";
+  let displayDate = "TBD";
+
+  const weekdayMatch = text.match(
+    /\b(sunday|monday|tuesday|wednesday|thursday|friday|saturday)\b(?:\s+at\s+(\d{1,2}):(\d{2}))?/i,
+  );
+
+  if (weekdayMatch) {
+    const weekday = WEEKDAY_INDEX[weekdayMatch[1].toLowerCase()];
+    const hour = Number(weekdayMatch[2] ?? "23");
+    const minute = Number(weekdayMatch[3] ?? "59");
+    const target = nextWeekdayAtTime(weekday, hour, minute);
+    dueAt = toLocalIsoNoTimezone(target);
+    displayDate = toDisplayDate(target);
+  }
+
+  const course: Course = inferredCourse ?? "General";
+
+  return [
+    {
+      id: randomUUID(),
+      category: "Course",
+      course,
+      title,
+      type: "Homework",
+      dueAt,
+      displayDate,
+      description: `Submission deadline for ${title}.`,
+      status: "Upcoming",
+      sourceSentence: body.trim() || subject,
+    },
+  ];
+}
+
 export async function extractFromEmail(
   subject: string,
   body: string,
@@ -230,9 +323,7 @@ export async function extractFromEmail(
         ? (item.course as Course)
         : "General";
       const finalCourse: Course =
-        category === "Course" && normalizedCourse === "General" && inferredCourse
-          ? inferredCourse
-          : normalizedCourse;
+        category === "Course" && inferredCourse ? inferredCourse : normalizedCourse;
 
       return {
         ...item,
@@ -250,6 +341,10 @@ export async function extractFromEmail(
     .filter((item) => !isHomeworkAnnouncementWithoutDeadline(item));
 
   if (items.length === 0) {
+    const fallbackItems = tryHeuristicFallbackExtraction(subject, body, emailFrom, inferredCourse);
+    if (fallbackItems.length > 0) {
+      return { relevant: true, items: fallbackItems };
+    }
     return { relevant: false, items: [] };
   }
 
