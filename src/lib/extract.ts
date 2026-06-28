@@ -51,7 +51,13 @@ function classifyItemCategory(type: DeadlineType): DeadlineCategory {
 }
 
 const client = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
+  // Defensive: Vercel env values can be accidentally pasted with extra lines.
+  // Use the first non-empty line so Authorization headers stay valid.
+  apiKey:
+    process.env.OPENAI_API_KEY
+      ?.split(/\r?\n/)
+      .map((line) => line.trim())
+      .find((line) => line.length > 0) ?? "",
 });
 
 export interface ExtractionResult {

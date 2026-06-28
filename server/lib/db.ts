@@ -2,8 +2,15 @@ import { createClient } from "@supabase/supabase-js";
 
 import type { DeadlineCategory, DeadlineItem } from "../../src/data/mockDeadlineItems";
 
-const supabaseUrl = process.env.SUPABASE_URL;
-const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+function firstEnvLine(value: string | undefined): string | undefined {
+  return value
+    ?.split(/\r?\n/)
+    .map((line) => line.trim())
+    .find((line) => line.length > 0);
+}
+
+const supabaseUrl = firstEnvLine(process.env.SUPABASE_URL);
+const supabaseServiceRoleKey = firstEnvLine(process.env.SUPABASE_SERVICE_ROLE_KEY);
 
 let supabaseClient:
   | ReturnType<typeof createClient>
