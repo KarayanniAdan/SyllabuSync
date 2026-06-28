@@ -65,7 +65,16 @@ export default defineEventHandler(async (event) => {
 
     return { ok: true, extracted: result.items.length };
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
+    const message =
+      error instanceof Error
+        ? error.message
+        : (() => {
+            try {
+              return JSON.stringify(error);
+            } catch {
+              return String(error);
+            }
+          })();
     console.error("inbound-email error:", error);
     return {
       ok: false,
