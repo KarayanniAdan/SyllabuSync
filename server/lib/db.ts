@@ -5,16 +5,26 @@ import type { DeadlineCategory, DeadlineItem } from "../../src/data/mockDeadline
 const supabaseUrl = process.env.SUPABASE_URL;
 const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-if (!supabaseUrl || !supabaseServiceRoleKey) {
-  throw new Error("Missing Supabase environment variables");
-}
+let supabaseClient:
+  | ReturnType<typeof createClient>
+  | undefined;
 
-const supabase = createClient(supabaseUrl, supabaseServiceRoleKey, {
-  auth: {
-    persistSession: false,
-    autoRefreshToken: false,
-  },
-});
+function getSupabase() {
+  if (!supabaseUrl || !supabaseServiceRoleKey) {
+    throw new Error("Missing Supabase environment variables");
+  }
+
+  if (!supabaseClient) {
+    supabaseClient = createClient(supabaseUrl, supabaseServiceRoleKey, {
+      auth: {
+        persistSession: false,
+        autoRefreshToken: false,
+      },
+    });
+  }
+
+  return supabaseClient;
+}
 
 function getItemCategory(item: Pick<DeadlineItem, "type" | "course">): DeadlineCategory {
   return item.type === "Homework" || item.type === "Quiz/Exam" ? "Course" : "Other";
@@ -71,6 +81,7 @@ function isLogicalDuplicate(existing: DeadlineItem, incoming: DeadlineItem): boo
 }
 
 async function findLogicalDuplicate(item: DeadlineItem): Promise<DeadlineItem | null> {
+  const supabase = getSupabase();
   const { data, error } = await supabase.from("deadline_items").select("*");
 
   if (error) {
@@ -97,6 +108,7 @@ function rowToDeadlineItem(row: any): DeadlineItem {
 }
 
 export async function getAllDeadlines(): Promise<DeadlineItem[]> {
+  const supabase = getSupabase();
   const { data, error } = await supabase
     .from("deadline_items")
     .select("*")
@@ -110,6 +122,7 @@ export async function getAllDeadlines(): Promise<DeadlineItem[]> {
 }
 
 export async function saveDeadline(item: DeadlineItem): Promise<void> {
+  const supabase = getSupabase();
   const existing = await findLogicalDuplicate(item);
   const targetItem = existing ? { ...item, id: existing.id } : item;
 
@@ -141,6 +154,7 @@ export async function isMessageProcessed(messageKey: string): Promise<boolean> {
     return false;
   }
 
+  const supabase = getSupabase();
   const { data, error } = await supabase
     .from("processed_messages")
     .select("gmail_message_id")
@@ -159,6 +173,7 @@ export async function markMessageProcessed(messageKey: string): Promise<void> {
     return;
   }
 
+  const supabase = getSupabase();
   const { error } = await supabase.from("processed_messages").upsert({
     gmail_message_id: messageKey,
   });

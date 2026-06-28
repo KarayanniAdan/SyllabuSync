@@ -23,50 +23,55 @@ function asString(value: unknown): string {
 }
 
 export default defineEventHandler(async (event) => {
-  const body = await readBody<Record<string, unknown>>(event);
-  console.log("DEBUG BODY:", body);
+  try {
+    const body = await readBody<Record<string, unknown>>(event);
 
-  const subject: string = asString(body["subject"]) || "(no subject)";
+    const subject: string = asString(body["subject"]) || "(no subject)";
 
-  const emailBody: string =
-    asString(body["body"]) ||
-    asString(body["body-plain"]) ||
-    asString(body["body-html"]);
+    const emailBody: string =
+      asString(body["body"]) ||
+      asString(body["body-plain"]) ||
+      asString(body["body-html"]);
 
-  const emailFrom: string = asString(body["from"]);
-  const gmailMessageId: string = asString(body["gmailMessageId"]);
+    const emailFrom: string = asString(body["from"]);
+    const gmailMessageId: string = asString(body["gmailMessageId"]);
 
-  console.log("DEBUG EMAIL BODY LENGTH:", emailBody.length);
+    const idempotencyKey = buildInboundIdempotencyKey(
+      subject,
+      emailBody,
+      emailFrom,
+      gmailMessageId,
+    );
 
-  const idempotencyKey = buildInboundIdempotencyKey(
-    subject,
-    emailBody,
-    emailFrom,
-    gmailMessageId,
-  );
+    if (await isMessageProcessed(idempotencyKey)) {
+      return { ok: true, extracted: 0, reason: "already processed" };
+    }
 
-  if (await isMessageProcessed(idempotencyKey)) {
-    return { ok: true, extracted: 0, reason: "already processed" };
+    if (!emailBody.trim()) {
+      return { ok: false, reason: "empty body" };
+    }
+
+    const result = await extractFromEmail(subject, emailBody, emailFrom);
+
+    if (!result.relevant || result.items.length === 0) {
+      return { ok: true, extracted: 0, reason: "not relevant" };
+    }
+
+    for (const item of result.items) {
+      await saveDeadline(item);
+    }
+
+    await markMessageProcessed(idempotencyKey);
+
+    return { ok: true, extracted: result.items.length };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error("inbound-email error:", error);
+    return {
+      ok: false,
+      extracted: 0,
+      reason: "server error",
+      error: message,
+    };
   }
-
-  if (!emailBody.trim()) {
-    return { ok: false, reason: "empty body" };
-  }
-
-  const result = await extractFromEmail(subject, emailBody, emailFrom);
-
-  console.log("DEBUG EXTRACT RESULT:", result);
-
-  if (!result.relevant || result.items.length === 0) {
-    return { ok: true, extracted: 0, reason: "not relevant" };
-  }
-
-  for (const item of result.items) {
-    console.log("DEBUG SAVING ITEM:", item);
-    await saveDeadline(item);
-  }
-
-  await markMessageProcessed(idempotencyKey);
-
-  return { ok: true, extracted: result.items.length };
 });
