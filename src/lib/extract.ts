@@ -98,6 +98,12 @@ Rules:
 - Set "relevant" to false if the email contains no academic deadlines, assignments, events, or announcements.
 - If the email is in Hebrew, extract the information and return the JSON fields in English, but keep sourceSentence in the original language.
 - For "status": use "Urgent" if the deadline is within 48 hours, "Upcoming" if it's in the future beyond 48 hours, "Expired" if it has passed.
+- Distinguish deadline semantics carefully:
+  - Normal deadline (no penalty): this is the primary dueAt deadline.
+  - Extended deadline without penalty: use the extended/new date as the primary dueAt deadline.
+  - Late-submission deadline with penalty/deduction (e.g., late submission, penalty, points deducted, deducted per day, איחור, הגשה באיחור, הורדת נקודות, קנס): never use this as the primary dueAt when a normal/no-penalty deadline exists in the same email.
+  - If both normal due date and penalized late-submission date appear, keep the normal due date as dueAt and mention late policy details in description/sourceSentence.
+  - If only a penalized late-submission window appears and no normal deadline is provided, do not invent a normal deadline.
 - For "course": map to the closest supported course. If it doesn't match any specific course, use "General".
 - Course mapping hints:
   - "Operating Systems" if email mentions "מערכות הפעלה" or course code "02340123".
@@ -110,6 +116,209 @@ Rules:
 - Never use relative wording in dueAt/displayDate. If a relative date appears in the email, convert it to an absolute date.
 - One email can produce multiple items if it mentions multiple deadlines or events.
 - If no specific date/time is mentioned, set dueAt to null and use a descriptive displayDate like "TBD".`;
+
+const LATE_SUBMISSION_PATTERN =
+  /\blate\s*submission\b|\blate\b|\blate\s*penalty\b|\bpenalty\b|\bpoints?\s*deducted\b|\bdeduct(?:ed|ion)?\s*per\s*day\b|איחור|הגשה\s+באיחור|הורדת\s+נקודות|קנס/i;
+
+const PENALTY_PATTERN =
+  /\blate\s*penalty\b|\bpenalty\b|\bpoints?\s*deducted\b|\bdeduct(?:ed|ion)?\s*per\s*day\b|הורדת\s+נקודות|קנס/i;
+
+const EXTENSION_PATTERN =
+  /\bextended\b|\bdeadline\s+extended\b|\bextension\b|\bpostponed\b|\bmoved\s+to\b|\bnew\s+deadline\b|הוארך|נדחה|המועד\s+הוארך|דחייה/i;
+
+const NORMAL_DUE_PATTERN =
+  /\bdue\b|\bdeadline\b|\bsubmit\b|\bsubmission\b|\bmust\s+be\s+submitted\b|\bno\s+later\s+than\b|\buntil\b|\bcloses\b|להגיש|הגשה|מועד\s+הגשה|עד\s+לתאריך|עד\s+ליום|עד\b/i;
+
+function splitIntoClauses(text: string): string[] {
+  return text
+    .split(/[\n.!?;]+/)
+    .map((chunk) => chunk.trim())
+    .filter((chunk) => chunk.length > 0);
+}
+
+function getAcademicDateParts(dueAt: string): { year: number; month: number; day: number } | null {
+  const parsed = parseDeadlineDueAt(dueAt);
+  if (!parsed) return null;
+
+  const formatter = new Intl.DateTimeFormat("en-US", {
+    timeZone: "Asia/Jerusalem",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  });
+
+  let year = 0;
+  let month = 0;
+  let day = 0;
+  for (const part of formatter.formatToParts(parsed)) {
+    if (part.type === "year") year = Number(part.value);
+    if (part.type === "month") month = Number(part.value);
+    if (part.type === "day") day = Number(part.value);
+  }
+
+  if (!year || !month || !day) return null;
+  return { year, month, day };
+}
+
+function getAcademicClockParts(dueAt: string): { hour: number; minute: number } | null {
+  const parsed = parseDeadlineDueAt(dueAt);
+  if (!parsed) return null;
+
+  const formatter = new Intl.DateTimeFormat("en-US", {
+    timeZone: "Asia/Jerusalem",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
+
+  let hour = 23;
+  let minute = 59;
+  for (const part of formatter.formatToParts(parsed)) {
+    if (part.type === "hour") hour = Number(part.value);
+    if (part.type === "minute") minute = Number(part.value);
+  }
+
+  return { hour, minute };
+}
+
+function getAcademicDateKey(dueAt: string): string | null {
+  const parts = getAcademicDateParts(dueAt);
+  if (!parts) return null;
+  return `${parts.year}-${String(parts.month).padStart(2, "0")}-${String(parts.day).padStart(2, "0")}`;
+}
+
+type DateMention = {
+  dueAt: string;
+  dateKey: string;
+  hasLateLanguage: boolean;
+  hasPenaltyLanguage: boolean;
+  hasExtensionLanguage: boolean;
+  hasDueLanguage: boolean;
+};
+
+function inferReferenceYear(dueAt: string): number {
+  const parts = getAcademicDateParts(dueAt);
+  if (parts) return parts.year;
+  return getAcademicNowDateTimeParts().year;
+}
+
+function toDateMention(
+  year: number,
+  month: number,
+  day: number,
+  hour: number,
+  minute: number,
+  flags: Omit<DateMention, "dueAt" | "dateKey">,
+): DateMention | null {
+  if (month < 1 || month > 12) return null;
+  if (day < 1 || day > 31) return null;
+
+  const tentative = new Date(Date.UTC(year, month - 1, day));
+  if (
+    tentative.getUTCFullYear() !== year ||
+    tentative.getUTCMonth() + 1 !== month ||
+    tentative.getUTCDate() !== day
+  ) {
+    return null;
+  }
+
+  const dueAt = buildAcademicDueAtIso(year, month, day, hour, minute);
+  const dateKey = `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+  return { ...flags, dueAt, dateKey };
+}
+
+function extractDateMentionsFromClause(clause: string, referenceYear: number, hour: number, minute: number): DateMention[] {
+  const hasLateLanguage = LATE_SUBMISSION_PATTERN.test(clause);
+  const hasPenaltyLanguage = PENALTY_PATTERN.test(clause);
+  const hasExtensionLanguage = EXTENSION_PATTERN.test(clause);
+  const hasDueLanguage = NORMAL_DUE_PATTERN.test(clause);
+
+  const mentions: DateMention[] = [];
+  const commonFlags = {
+    hasLateLanguage,
+    hasPenaltyLanguage,
+    hasExtensionLanguage,
+    hasDueLanguage,
+  };
+
+  for (const match of clause.matchAll(/\b(\d{1,2})[\/.](\d{1,2})(?:[\/.](\d{2,4}))?\b/g)) {
+    const day = Number(match[1]);
+    const month = Number(match[2]);
+    const rawYear = match[3];
+    let year = referenceYear;
+
+    if (rawYear) {
+      const parsedYear = Number(rawYear);
+      year = rawYear.length === 2 ? 2000 + parsedYear : parsedYear;
+    }
+
+    const mention = toDateMention(year, month, day, hour, minute, commonFlags);
+    if (mention) mentions.push(mention);
+  }
+
+  for (const match of clause.matchAll(/\b(\d{4})-(\d{2})-(\d{2})\b/g)) {
+    const year = Number(match[1]);
+    const month = Number(match[2]);
+    const day = Number(match[3]);
+    const mention = toDateMention(year, month, day, hour, minute, commonFlags);
+    if (mention) mentions.push(mention);
+  }
+
+  return mentions;
+}
+
+export function enforcePrimaryDeadlinePolicy(item: DeadlineItem, fullEmailText: string): DeadlineItem | null {
+  if (!item.dueAt) return item;
+
+  const currentDateKey = getAcademicDateKey(item.dueAt);
+  if (!currentDateKey) return item;
+
+  const clock = getAcademicClockParts(item.dueAt) ?? { hour: 23, minute: 59 };
+  const referenceYear = inferReferenceYear(item.dueAt);
+  const combinedText = `${item.sourceSentence}\n${fullEmailText}`;
+  const clauses = splitIntoClauses(combinedText);
+
+  const mentions = clauses.flatMap((clause) =>
+    extractDateMentionsFromClause(clause, referenceYear, clock.hour, clock.minute),
+  );
+
+  if (mentions.length === 0) return item;
+
+  const hasPenaltyLanguage = clauses.some((clause) => PENALTY_PATTERN.test(clause));
+  const hasLateLanguage = clauses.some((clause) => LATE_SUBMISSION_PATTERN.test(clause));
+  const hasExtensionLanguage = clauses.some((clause) => EXTENSION_PATTERN.test(clause));
+
+  const normalMentions = mentions.filter(
+    (m) => !m.hasLateLanguage && !m.hasPenaltyLanguage && m.hasDueLanguage,
+  );
+  const lateMentions = mentions.filter((m) => m.hasLateLanguage || m.hasPenaltyLanguage);
+
+  // If we only have a penalized late-submission deadline and no normal due date, drop it.
+  if ((hasLateLanguage || hasPenaltyLanguage) && normalMentions.length === 0 && lateMentions.length > 0) {
+    return null;
+  }
+
+  // Extension without penalty should keep the extended deadline as primary.
+  if (hasExtensionLanguage && !hasPenaltyLanguage) {
+    return item;
+  }
+
+  // If both normal and penalized-late dates exist, force primary deadline to the normal date.
+  if (normalMentions.length > 0 && lateMentions.length > 0) {
+    const sortedNormal = [...normalMentions].sort((a, b) => a.dueAt.localeCompare(b.dueAt));
+    const primaryNormal = sortedNormal[0];
+
+    if (primaryNormal.dateKey !== currentDateKey) {
+      return {
+        ...item,
+        dueAt: primaryNormal.dueAt,
+        displayDate: formatDueAtDisplayDate(primaryNormal.dueAt),
+      };
+    }
+  }
+
+  return item;
+}
 
 function hasValidAbsoluteDueAt(dueAt: string): boolean {
   if (!dueAt || !/^\d{4}-\d{2}-\d{2}T/.test(dueAt)) return false;
@@ -344,6 +553,8 @@ export async function extractFromEmail(
         displayDate: normalizedDueAt ? formatDueAtDisplayDate(normalizedDueAt) : (item.displayDate ?? "TBD"),
       };
     })
+    .map((item) => enforcePrimaryDeadlinePolicy(item, userMessage))
+    .filter((item): item is DeadlineItem => item !== null)
     .map(normalizeHomeworkDeadlineText)
     .filter((item) => !failsDateQualityGate(item))
     .filter((item) => !isHomeworkAnnouncementWithoutDeadline(item));

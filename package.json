@@ -7,6 +7,7 @@
     "dev": "vite dev",
     "webhook": "bun run scripts/webhook-server.ts",
     "test:extract": "bun run scripts/test-extract.ts",
+    "test:extract-late-policy": "bun run scripts/test-extract-late-policy.ts",
     "test:timezone": "bun run scripts/test-timezone.ts",
     "test:inbound-idempotency": "bun run scripts/test-inbound-idempotency.ts",
     "test:semantic-dedupe": "bun run scripts/test-semantic-dedupe.ts",
