@@ -8,6 +8,14 @@ import type {
   DeadlineStatus,
 } from "../data/mockDeadlineItems";
 import { randomUUID } from "crypto";
+import {
+  buildAcademicDueAtIso,
+  formatDueAtDisplayDate,
+  getAcademicNowDateTimeParts,
+  getWeekdayInAcademicTimezone,
+  normalizeDeadlineDueAtFromSource,
+  parseDeadlineDueAt,
+} from "./timezone";
 
 const SUPPORTED_COURSES: Course[] = [
   "Operating Systems",
@@ -95,6 +103,8 @@ Rules:
   - "Operating Systems" if email mentions "מערכות הפעלה" or course code "02340123".
   - "Algorithms 1" if email mentions "אלגוריתמים 1" or course code "02340247".
   - "ATAM" if email mentions "ארגון ותכנות המחשב", "את"ם", "ATAM", or course code "02340118".
+- Default timezone is Asia/Jerusalem for all extracted dates and times unless the email explicitly states another timezone.
+- If another timezone is explicitly stated (e.g. UTC, PST, GMT+2), keep that timezone and encode it in dueAt.
 - Today's date for reference: ${new Date().toISOString().split("T")[0]}
 - Resolve relative dates (e.g. "this Sunday", "next Thursday", "tomorrow") into absolute calendar dates using today's date.
 - Never use relative wording in dueAt/displayDate. If a relative date appears in the email, convert it to an absolute date.
@@ -103,7 +113,7 @@ Rules:
 
 function hasValidAbsoluteDueAt(dueAt: string): boolean {
   if (!dueAt || !/^\d{4}-\d{2}-\d{2}T/.test(dueAt)) return false;
-  return !Number.isNaN(Date.parse(dueAt));
+  return parseDeadlineDueAt(dueAt) !== null;
 }
 
 function looksVagueDisplayDate(displayDate: string): boolean {
@@ -140,11 +150,8 @@ function dueAtWeekdayMatchesSource(sourceSentence: string, dueAt: string): boole
   const expected = expectedWeekdayFromSource(sourceSentence);
   if (expected === null) return true;
 
-  const ts = Date.parse(dueAt);
-  if (Number.isNaN(ts)) return false;
-
-  const actual = new Date(ts).getUTCDay();
-  return actual === expected;
+  const actual = getWeekdayInAcademicTimezone(dueAt);
+  return actual !== null && actual === expected;
 }
 
 function failsDateQualityGate(item: DeadlineItem): boolean {
@@ -213,35 +220,26 @@ const WEEKDAY_INDEX: Record<string, number> = {
 
 function nextWeekdayAtTime(weekday: number, hour: number, minute: number): Date {
   const now = new Date();
-  const target = new Date(now);
-  target.setSeconds(0, 0);
-  target.setHours(hour, minute, 0, 0);
+  const nowParts = getAcademicNowDateTimeParts(now);
 
-  const currentWeekday = now.getDay();
-  let dayDelta = (weekday - currentWeekday + 7) % 7;
-
-  // If the target time for "today" already passed, move to next week.
-  if (dayDelta === 0 && target.getTime() <= now.getTime()) {
+  let dayDelta = (weekday - nowParts.weekday + 7) % 7;
+  if (
+    dayDelta === 0 &&
+    (hour < nowParts.hour || (hour === nowParts.hour && minute <= nowParts.minute))
+  ) {
     dayDelta = 7;
   }
 
-  target.setDate(now.getDate() + dayDelta);
-  return target;
-}
+  const shifted = new Date(Date.UTC(nowParts.year, nowParts.month - 1, nowParts.day + dayDelta));
+  const dueAtIso = buildAcademicDueAtIso(
+    shifted.getUTCFullYear(),
+    shifted.getUTCMonth() + 1,
+    shifted.getUTCDate(),
+    hour,
+    minute,
+  );
 
-function toLocalIsoNoTimezone(date: Date): string {
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}:00`;
-}
-
-function toDisplayDate(date: Date): string {
-  const weekday = new Intl.DateTimeFormat("en-US", { weekday: "short" }).format(date);
-  const month = new Intl.DateTimeFormat("en-US", { month: "short" }).format(date);
-  const day = new Intl.DateTimeFormat("en-US", { day: "numeric" }).format(date);
-  const year = new Intl.DateTimeFormat("en-US", { year: "numeric" }).format(date);
-  const hh = String(date.getHours()).padStart(2, "0");
-  const mm = String(date.getMinutes()).padStart(2, "0");
-  return `${weekday}, ${month} ${day}, ${year} · ${hh}:${mm}`;
+  return new Date(dueAtIso);
 }
 
 function tryHeuristicFallbackExtraction(
@@ -272,8 +270,8 @@ function tryHeuristicFallbackExtraction(
     const hour = Number(weekdayMatch[2] ?? "23");
     const minute = Number(weekdayMatch[3] ?? "59");
     const target = nextWeekdayAtTime(weekday, hour, minute);
-    dueAt = toLocalIsoNoTimezone(target);
-    displayDate = toDisplayDate(target);
+    dueAt = target.toISOString();
+    displayDate = formatDueAtDisplayDate(dueAt);
   }
 
   const course: Course = inferredCourse ?? "General";
@@ -330,6 +328,10 @@ export async function extractFromEmail(
         : "General";
       const finalCourse: Course =
         category === "Course" && inferredCourse ? inferredCourse : normalizedCourse;
+      const normalizedDueAt = normalizeDeadlineDueAtFromSource(
+        item.dueAt ?? "",
+        item.sourceSentence ?? "",
+      );
 
       return {
         ...item,
@@ -338,8 +340,8 @@ export async function extractFromEmail(
         course: finalCourse,
         type: item.type as DeadlineType,
         status: item.status as DeadlineStatus,
-        dueAt: item.dueAt ?? "",
-        displayDate: item.displayDate ?? "TBD",
+        dueAt: normalizedDueAt,
+        displayDate: normalizedDueAt ? formatDueAtDisplayDate(normalizedDueAt) : (item.displayDate ?? "TBD"),
       };
     })
     .map(normalizeHomeworkDeadlineText)

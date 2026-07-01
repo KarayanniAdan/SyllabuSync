@@ -1,6 +1,11 @@
 import { readFileSync, writeFileSync, existsSync } from "fs";
 import { join } from "path";
 import type { DeadlineCategory, DeadlineItem, DeadlineStatus } from "../data/mockDeadlineItems";
+import {
+  formatDueAtDisplayDate,
+  normalizeDeadlineDueAtFromSource,
+  parseDeadlineDueAt,
+} from "./timezone";
 
 const DATA_PATH = join(process.cwd(), "data.json");
 const PROCESSED_PATH = join(process.cwd(), "processed-messages.json");
@@ -10,8 +15,8 @@ function getItemCategory(item: Pick<DeadlineItem, "type" | "course">): DeadlineC
 }
 
 function toTimestampOrNull(dueAt: string): number | null {
-  const ts = Date.parse(dueAt);
-  return Number.isNaN(ts) ? null : ts;
+  const parsed = parseDeadlineDueAt(dueAt);
+  return parsed ? parsed.getTime() : null;
 }
 
 function toDisplayDateTimestampOrNull(displayDate: string): number | null {
@@ -144,9 +149,18 @@ function readData(): DeadlineItem[] {
   }
 
   const parsed = JSON.parse(readFileSync(DATA_PATH, "utf-8")) as DeadlineItem[];
-  const deduped = dedupeDeadlines(parsed);
+  const normalized = parsed.map((item) => {
+    const dueAt = normalizeDeadlineDueAtFromSource(item.dueAt ?? "", item.sourceSentence ?? "");
+    return {
+      ...item,
+      dueAt,
+      displayDate: dueAt ? formatDueAtDisplayDate(dueAt) : item.displayDate,
+    };
+  });
+  const deduped = dedupeDeadlines(normalized);
 
-  if (deduped.length !== parsed.length) {
+  const changed = JSON.stringify(parsed) !== JSON.stringify(deduped);
+  if (deduped.length !== parsed.length || changed) {
     writeFileSync(DATA_PATH, JSON.stringify(deduped, null, 2), "utf-8");
   }
 
@@ -165,9 +179,12 @@ export function getAllDeadlines(): DeadlineItem[] {
 
 export function saveDeadline(item: DeadlineItem): void {
   const items = readData();
+  const normalizedDueAt = normalizeDeadlineDueAtFromSource(item.dueAt ?? "", item.sourceSentence ?? "");
   const normalizedItem = {
     ...item,
     category: item.category ?? getItemCategory(item),
+    dueAt: normalizedDueAt,
+    displayDate: normalizedDueAt ? formatDueAtDisplayDate(normalizedDueAt) : item.displayDate,
   };
   const idx = items.findIndex((i) => i.id === item.id);
   if (idx >= 0) {

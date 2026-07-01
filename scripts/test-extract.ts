@@ -6,10 +6,11 @@
 import "dotenv/config";
 import { extractFromEmail } from "../src/lib/extract";
 import { saveDeadline, getAllDeadlines } from "../src/lib/db";
+import { getWeekdayInAcademicTimezone, parseDeadlineDueAt } from "../src/lib/timezone";
 
 function hasValidAbsoluteDueAt(dueAt: string): boolean {
   if (!dueAt || !/^\d{4}-\d{2}-\d{2}T/.test(dueAt)) return false;
-  return !Number.isNaN(Date.parse(dueAt));
+  return parseDeadlineDueAt(dueAt) !== null;
 }
 
 function looksVagueDisplayDate(displayDate: string): boolean {
@@ -77,7 +78,7 @@ for (const email of TEST_EMAILS) {
 
     const expectedWeekday = expectedWeekdayFromSource(item.sourceSentence);
     if (expectedWeekday !== null && hasAbsoluteDueAt) {
-      const actualWeekday = new Date(item.dueAt).getUTCDay();
+      const actualWeekday = getWeekdayInAcademicTimezone(item.dueAt);
       if (actualWeekday !== expectedWeekday) {
         qualityFlags += 1;
         console.log("   ⚠️  Quality flag: weekday in dueAt does not match source sentence");

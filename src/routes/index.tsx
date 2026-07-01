@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { Course, DeadlineItem } from "@/data/mockDeadlineItems";
 import { cn } from "@/lib/utils";
 import { Check, GraduationCap, Search, X } from "lucide-react";
+import { formatDueAtForDisplay, getDeadlineTimestamp } from "@/lib/timezone";
 
 const SELECTED_COURSES_STORAGE_KEY = "syllabusync.homework.selected-courses";
 const VISIBLE_COURSES_STORAGE_KEY = "syllabusync.homework.visible-courses";
@@ -93,45 +94,14 @@ function courseMatchesSearch(course: CourseCatalogEntry, query: string) {
 }
 
 function formatDueDate(item: DeadlineItem) {
-  if (item.displayDate) {
-    const normalized = item.displayDate.trim();
-    if (/^[A-Za-z]{3},\s\w{3}\s\d{1,2},\s\d{4}\s·\s\d{2}:\d{2}$/.test(normalized)) {
-      return normalized.replace(/^\w{3},\s*/, "").replace(" · ", " at ");
-    }
-  }
-
-  const isoMatch = item.dueAt.match(
-    /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::\d{2})?(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})?$/,
-  );
-
-  if (isoMatch) {
-    const [, year, month, day, hour, minute] = isoMatch;
-    const date = new Date(Number(year), Number(month) - 1, Number(day));
-    const dateLabel = new Intl.DateTimeFormat("en-US", {
-      month: "short",
-      day: "numeric",
-      year: "numeric",
-    }).format(date);
-    return `${dateLabel} at ${hour}:${minute}`;
-  }
-
-  const fallback = new Date(item.dueAt);
-  if (Number.isNaN(fallback.getTime())) return item.displayDate || item.dueAt;
-
-  return `${new Intl.DateTimeFormat("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  }).format(fallback)} at ${new Intl.DateTimeFormat("en-US", {
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  }).format(fallback)}`;
+  const label = formatDueAtForDisplay(item.dueAt);
+  if (label) return label;
+  return item.displayDate || item.dueAt;
 }
 
 function getTimeRemaining(dueAt: string) {
-  const dueMs = new Date(dueAt).getTime();
-  if (Number.isNaN(dueMs)) return { label: "Expired", tone: "expired" as Tone };
+  const dueMs = getDeadlineTimestamp(dueAt);
+  if (dueMs === null) return { label: "Expired", tone: "expired" as Tone };
 
   const diffMs = dueMs - Date.now();
   if (diffMs <= 0) return { label: "Expired", tone: "expired" as Tone };
@@ -228,7 +198,14 @@ function Dashboard() {
       items
         .filter((item) => item.type === "Homework")
         .slice()
-        .sort((a, b) => new Date(a.dueAt).getTime() - new Date(b.dueAt).getTime()),
+        .sort((a, b) => {
+          const aMs = getDeadlineTimestamp(a.dueAt);
+          const bMs = getDeadlineTimestamp(b.dueAt);
+          if (aMs === null && bMs === null) return 0;
+          if (aMs === null) return 1;
+          if (bMs === null) return -1;
+          return aMs - bMs;
+        }),
     [items],
   );
 

@@ -1,6 +1,11 @@
 import { createClient } from "@supabase/supabase-js";
 
 import type { DeadlineCategory, DeadlineItem } from "../../src/data/mockDeadlineItems";
+import {
+  formatDueAtDisplayDate,
+  normalizeDeadlineDueAtFromSource,
+  parseDeadlineDueAt,
+} from "../../src/lib/timezone";
 
 function firstEnvLine(value: string | undefined): string | undefined {
   return value
@@ -64,8 +69,8 @@ function normalizeSemanticTitleKey(item: DeadlineItem): string {
 }
 
 function toTimestampOrNull(dueAt: string): number | null {
-  const ts = Date.parse(dueAt);
-  return Number.isNaN(ts) ? null : ts;
+  const parsed = parseDeadlineDueAt(dueAt);
+  return parsed ? parsed.getTime() : null;
 }
 
 function isLikelySameAssignmentWindow(existing: DeadlineItem, incoming: DeadlineItem): boolean {
@@ -100,14 +105,16 @@ async function findLogicalDuplicate(item: DeadlineItem): Promise<DeadlineItem | 
 }
 
 function rowToDeadlineItem(row: any): DeadlineItem {
+  const dueAt = normalizeDeadlineDueAtFromSource(row.due_at ?? "", row.source_sentence ?? "");
+
   return {
     id: row.id,
     category: row.category ?? getItemCategory(row),
     course: row.course,
     title: row.title,
     type: row.type,
-    dueAt: row.due_at ?? "",
-    displayDate: row.display_date ?? "TBD",
+    dueAt,
+    displayDate: dueAt ? formatDueAtDisplayDate(dueAt) : (row.display_date ?? "TBD"),
     description: row.description,
     status: row.status,
     sourceSentence: row.source_sentence ?? "",
@@ -130,8 +137,15 @@ export async function getAllDeadlines(): Promise<DeadlineItem[]> {
 
 export async function saveDeadline(item: DeadlineItem): Promise<void> {
   const supabase = getSupabase();
-  const existing = await findLogicalDuplicate(item);
-  const targetItem = existing ? { ...item, id: existing.id } : item;
+  const normalizedDueAt = normalizeDeadlineDueAtFromSource(item.dueAt ?? "", item.sourceSentence ?? "");
+  const normalizedItem: DeadlineItem = {
+    ...item,
+    dueAt: normalizedDueAt,
+    displayDate: normalizedDueAt ? formatDueAtDisplayDate(normalizedDueAt) : item.displayDate,
+  };
+
+  const existing = await findLogicalDuplicate(normalizedItem);
+  const targetItem = existing ? { ...normalizedItem, id: existing.id } : normalizedItem;
 
   const { error } = await supabase.from("deadline_items").upsert(
     {
