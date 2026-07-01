@@ -23,6 +23,48 @@ function sourceMentionsExplicitTimezone(sourceText: string): boolean {
   );
 }
 
+function extractExplicitClockFromSource(sourceText: string): { hour: number; minute: number } | null {
+  const amPmMatch = sourceText.match(/\b(1[0-2]|0?[1-9]):([0-5]\d)\s*(am|pm)\b/i);
+  if (amPmMatch) {
+    const rawHour = Number(amPmMatch[1]);
+    const minute = Number(amPmMatch[2]);
+    const meridiem = amPmMatch[3].toLowerCase();
+    const hour = meridiem === "pm" ? (rawHour % 12) + 12 : rawHour % 12;
+    return { hour, minute };
+  }
+
+  const twentyFourHourMatch = sourceText.match(/\b([01]?\d|2[0-3]):([0-5]\d)\b/);
+  if (!twentyFourHourMatch) return null;
+
+  return {
+    hour: Number(twentyFourHourMatch[1]),
+    minute: Number(twentyFourHourMatch[2]),
+  };
+}
+
+function getDatePartsInTimezone(date: Date, timeZone: string): { year: number; month: number; day: number } | null {
+  const formatter = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  });
+
+  const valueByType: Record<string, string> = {};
+  for (const part of formatter.formatToParts(date)) {
+    if (part.type !== "literal") {
+      valueByType[part.type] = part.value;
+    }
+  }
+
+  const year = Number(valueByType.year);
+  const month = Number(valueByType.month);
+  const day = Number(valueByType.day);
+
+  if (!year || !month || !day) return null;
+  return { year, month, day };
+}
+
 function parseIsoLikeLocalDateTime(value: string): DateTimeParts | null {
   const match = value
     .trim()
@@ -132,11 +174,41 @@ export function normalizeDeadlineDueAtFromSource(dueAt: string, sourceText: stri
   const value = dueAt.trim();
   if (!value) return "";
 
-  if (hasExplicitTimezone(value) && !sourceMentionsExplicitTimezone(sourceText)) {
-    return normalizeDeadlineDueAt(stripTrailingTimezone(value));
+  const sourceHasExplicitTimezone = sourceMentionsExplicitTimezone(sourceText);
+  const sourceClock = extractExplicitClockFromSource(sourceText);
+
+  let normalized = "";
+
+  if (hasExplicitTimezone(value) && !sourceHasExplicitTimezone) {
+    normalized = normalizeDeadlineDueAt(stripTrailingTimezone(value));
+  } else {
+    normalized = normalizeDeadlineDueAt(value);
   }
 
-  return normalizeDeadlineDueAt(value);
+  if (!normalized) return "";
+
+  // If source includes an explicit clock time but no explicit timezone, trust the clock as Israel local time.
+  if (!sourceHasExplicitTimezone && sourceClock) {
+    const parsed = new Date(normalized);
+    if (!Number.isNaN(parsed.getTime())) {
+      const dateParts = getDatePartsInTimezone(parsed, DEFAULT_ACADEMIC_TIMEZONE);
+      if (dateParts) {
+        return zonedDateTimePartsToUtcDate(
+          {
+            year: dateParts.year,
+            month: dateParts.month,
+            day: dateParts.day,
+            hour: sourceClock.hour,
+            minute: sourceClock.minute,
+            second: 0,
+          },
+          DEFAULT_ACADEMIC_TIMEZONE,
+        ).toISOString();
+      }
+    }
+  }
+
+  return normalized;
 }
 
 export function parseDeadlineDueAt(dueAt: string): Date | null {
