@@ -23,7 +23,7 @@ function sourceMentionsExplicitTimezone(sourceText: string): boolean {
   );
 }
 
-function extractExplicitClockFromSource(sourceText: string): { hour: number; minute: number } | null {
+export function extractExplicitClockFromText(sourceText: string): { hour: number; minute: number } | null {
   const amPmMatch = sourceText.match(/\b(1[0-2]|0?[1-9]):([0-5]\d)\s*(am|pm)\b/i);
   if (amPmMatch) {
     const rawHour = Number(amPmMatch[1]);
@@ -175,7 +175,7 @@ export function normalizeDeadlineDueAtFromSource(dueAt: string, sourceText: stri
   if (!value) return "";
 
   const sourceHasExplicitTimezone = sourceMentionsExplicitTimezone(sourceText);
-  const sourceClock = extractExplicitClockFromSource(sourceText);
+  const sourceClock = extractExplicitClockFromText(sourceText);
 
   let normalized = "";
 

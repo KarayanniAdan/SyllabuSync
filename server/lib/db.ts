@@ -105,7 +105,10 @@ async function findLogicalDuplicate(item: DeadlineItem): Promise<DeadlineItem | 
 }
 
 function rowToDeadlineItem(row: any): DeadlineItem {
-  const dueAt = normalizeDeadlineDueAtFromSource(row.due_at ?? "", row.source_sentence ?? "");
+  const normalizationContext = [row.source_sentence, row.title, row.description, row.display_date]
+    .filter((part) => typeof part === "string" && part.trim().length > 0)
+    .join("\n");
+  const dueAt = normalizeDeadlineDueAtFromSource(row.due_at ?? "", normalizationContext);
 
   return {
     id: row.id,
@@ -137,7 +140,10 @@ export async function getAllDeadlines(): Promise<DeadlineItem[]> {
 
 export async function saveDeadline(item: DeadlineItem): Promise<void> {
   const supabase = getSupabase();
-  const normalizedDueAt = normalizeDeadlineDueAtFromSource(item.dueAt ?? "", item.sourceSentence ?? "");
+  const normalizationContext = [item.sourceSentence, item.title, item.description, item.displayDate]
+    .filter((part) => typeof part === "string" && part.trim().length > 0)
+    .join("\n");
+  const normalizedDueAt = normalizeDeadlineDueAtFromSource(item.dueAt ?? "", normalizationContext);
   const normalizedItem: DeadlineItem = {
     ...item,
     dueAt: normalizedDueAt,

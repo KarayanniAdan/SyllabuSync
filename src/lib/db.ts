@@ -150,7 +150,10 @@ function readData(): DeadlineItem[] {
 
   const parsed = JSON.parse(readFileSync(DATA_PATH, "utf-8")) as DeadlineItem[];
   const normalized = parsed.map((item) => {
-    const dueAt = normalizeDeadlineDueAtFromSource(item.dueAt ?? "", item.sourceSentence ?? "");
+    const normalizationContext = [item.sourceSentence, item.title, item.description, item.displayDate]
+      .filter((part) => typeof part === "string" && part.trim().length > 0)
+      .join("\n");
+    const dueAt = normalizeDeadlineDueAtFromSource(item.dueAt ?? "", normalizationContext);
     return {
       ...item,
       dueAt,
@@ -179,7 +182,10 @@ export function getAllDeadlines(): DeadlineItem[] {
 
 export function saveDeadline(item: DeadlineItem): void {
   const items = readData();
-  const normalizedDueAt = normalizeDeadlineDueAtFromSource(item.dueAt ?? "", item.sourceSentence ?? "");
+  const normalizationContext = [item.sourceSentence, item.title, item.description, item.displayDate]
+    .filter((part) => typeof part === "string" && part.trim().length > 0)
+    .join("\n");
+  const normalizedDueAt = normalizeDeadlineDueAtFromSource(item.dueAt ?? "", normalizationContext);
   const normalizedItem = {
     ...item,
     category: item.category ?? getItemCategory(item),

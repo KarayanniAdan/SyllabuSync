@@ -41,4 +41,18 @@ if (formatDueAtForDisplay(normalizedFromSource) !== "Jul 12, 2026 at 23:59") {
   process.exit(1);
 }
 
+const sourceWithoutClock = "Homework 3 submission deadline";
+const fullEmailContext =
+  `${sourceWithoutClock}\nEmail body: Please submit HW3 by 12/07 at 23:59 (Israel time).`;
+const normalizedWithFullContext = normalizeDeadlineDueAtFromSource(modelValue, fullEmailContext);
+
+console.log("Source without clock (full context includes clock):", sourceWithoutClock);
+console.log("Normalized with full context:", normalizedWithFullContext);
+console.log("Display with full context:", formatDueAtForDisplay(normalizedWithFullContext));
+
+if (formatDueAtForDisplay(normalizedWithFullContext) !== "Jul 12, 2026 at 23:59") {
+  console.error("FAIL: full-context normalization should preserve 23:59");
+  process.exit(1);
+}
+
 console.log("PASS: interpreted as Asia/Jerusalem (UTC+03 in July), not UTC");

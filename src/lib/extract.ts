@@ -10,6 +10,7 @@ import type {
 import { randomUUID } from "crypto";
 import {
   buildAcademicDueAtIso,
+  extractExplicitClockFromText,
   formatDueAtDisplayDate,
   getAcademicNowDateTimeParts,
   getWeekdayInAcademicTimezone,
@@ -273,9 +274,10 @@ export function enforcePrimaryDeadlinePolicy(item: DeadlineItem, fullEmailText: 
   const currentDateKey = getAcademicDateKey(item.dueAt);
   if (!currentDateKey) return item;
 
-  const clock = getAcademicClockParts(item.dueAt) ?? { hour: 23, minute: 59 };
   const referenceYear = inferReferenceYear(item.dueAt);
   const combinedText = `${item.sourceSentence}\n${fullEmailText}`;
+  const explicitClock = extractExplicitClockFromText(combinedText);
+  const clock = explicitClock ?? getAcademicClockParts(item.dueAt) ?? { hour: 23, minute: 59 };
   const clauses = splitIntoClauses(combinedText);
 
   const mentions = clauses.flatMap((clause) =>
@@ -537,9 +539,10 @@ export async function extractFromEmail(
         : "General";
       const finalCourse: Course =
         category === "Course" && inferredCourse ? inferredCourse : normalizedCourse;
+      const normalizationContext = `${item.sourceSentence ?? ""}\n${userMessage}`;
       const normalizedDueAt = normalizeDeadlineDueAtFromSource(
         item.dueAt ?? "",
-        item.sourceSentence ?? "",
+        normalizationContext,
       );
 
       return {
