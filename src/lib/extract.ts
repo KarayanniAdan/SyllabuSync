@@ -9,6 +9,12 @@ import type {
 } from "../data/mockDeadlineItems";
 import { randomUUID } from "crypto";
 import {
+  mentionedCourses,
+  singleEmailCourse,
+  stripReplyHistory,
+  validateItemCourse,
+} from "./course-matching";
+import {
   buildAcademicDueAtIso,
   extractExplicitClockFromText,
   formatDueAtDisplayDate,
@@ -18,72 +24,7 @@ import {
   parseDeadlineDueAt,
 } from "./timezone";
 
-const SUPPORTED_COURSES: Course[] = [
-  "Numerical Algorithms",
-  "Introduction to Artificial Intelligence",
-  "Compilation Theory",
-  "Physics 2MM",
-  "Introduction to Computer Networks",
-  "General",
-];
 const COURSE_ITEM_TYPES: DeadlineType[] = ["Homework", "Quiz/Exam"];
-
-// Course numbers match the full 8-digit form (with leading zero), the form without the
-// leading zero, and the short 6-digit Technion form, never as part of a longer number.
-const COURSE_HINTS: Array<{ course: Exclude<Course, "General">; patterns: RegExp[] }> = [
-  {
-    course: "Numerical Algorithms",
-    patterns: [
-      /(?<!\d)(?:02340125|2340125|234125)(?!\d)/,
-      /\bnumerical\s+algo(?:rithms?)?\b/i,
-      /אלגו(?:ריתמים)?\s+נומריים/,
-    ],
-  },
-  {
-    course: "Introduction to Artificial Intelligence",
-    patterns: [
-      /(?<!\d)(?:02360501|2360501|236501)(?!\d)/,
-      /\bintro(?:duction)?\.?\s+to\s+(?:artificial\s+intelligence|ai)\b/i,
-      /מבוא\s+לבינה\s+מלאכותית/,
-    ],
-  },
-  {
-    course: "Compilation Theory",
-    patterns: [
-      /(?<!\d)(?:02360360|2360360|236360)(?!\d)/,
-      /\bcompilation\s+theory\b/i,
-      /\btheory\s+of\s+compilation\b/i,
-      /תורת\s+ה?קומפילציה/,
-    ],
-  },
-  {
-    course: "Physics 2MM",
-    patterns: [
-      /(?<!\d)(?:01140075|1140075|114075)(?!\d)/,
-      /\bphysics\s*2\s*m\s*m\b/i,
-      /פי[סז]יקה\s*2\s*(?:ממ|מ"מ|מ״מ)(?![א-ת])/,
-    ],
-  },
-  {
-    course: "Introduction to Computer Networks",
-    patterns: [
-      /(?<!\d)(?:02360334|2360334|236334)(?!\d)/,
-      /\bintro(?:duction)?\.?\s+to\s+(?:computer\s+)?networks?\b/i,
-      /\bcomputer\s+networks\b/i,
-      /מבוא\s+לרשתות\s+מחשבים/,
-      /רשתות\s+מחשבים/,
-    ],
-  },
-];
-
-function inferCourseFromText(text: string): Exclude<Course, "General"> | null {
-  for (const hint of COURSE_HINTS) {
-    if (hint.patterns.some((p) => p.test(text))) {
-      return hint.course;
-    }
-  }
-  return null;
-}
 
 function classifyItemCategory(type: DeadlineType): DeadlineCategory {
   return COURSE_ITEM_TYPES.includes(type) ? "Course" : "Other";
@@ -102,6 +43,8 @@ const client = new OpenAI({
 export interface ExtractionResult {
   relevant: boolean;
   items: DeadlineItem[];
+  /** Set when course items were discarded because no supported course could be confirmed. */
+  rejectionReason?: "no-supported-course";
 }
 
 const SYSTEM_PROMPT = `You are an academic deadline extractor for Israeli university students.
@@ -114,6 +57,7 @@ Return a JSON object with this exact shape:
   "items": [
     {
       "course": one of: "Numerical Algorithms" | "Introduction to Artificial Intelligence" | "Compilation Theory" | "Physics 2MM" | "Introduction to Computer Networks" | "General",
+      "courseEvidence": the exact words copied from the email subject or body that identify the course (e.g. "Physics 2M", "תורת הקומפילציה", "02360360"), or "" if none,
       "title": short title of the item (e.g. "HW2", "Quiz 3", "Lab Report"),
       "type": one of: "Homework" | "Quiz/Exam" | "Activity/Event" | "Registration" | "Announcement",
       "dueAt": ISO 8601 datetime string (e.g. "2025-06-15T23:59:00") or null if no specific deadline,
@@ -135,14 +79,9 @@ Rules:
   - Late-submission deadline with penalty/deduction (e.g., late submission, penalty, points deducted, deducted per day, איחור, הגשה באיחור, הורדת נקודות, קנס): never use this as the primary dueAt when a normal/no-penalty deadline exists in the same email.
   - If both normal due date and penalized late-submission date appear, keep the normal due date as dueAt and mention late policy details in description/sourceSentence.
   - If only a penalized late-submission window appears and no normal deadline is provided, do not invent a normal deadline.
-- For "course": map to the closest supported course using its exact canonical English name from the list above. If it doesn't match any specific course, use "General".
-- Course mapping hints (match by name in English or Hebrew, common abbreviations, or course number; course numbers may appear with or without the leading zero, e.g. 02340125 / 234125):
-  - "Numerical Algorithms": course number 02340125; Hebrew "אלגוריתמים נומריים"; "Numerical Algo".
-  - "Introduction to Artificial Intelligence": course number 02360501; Hebrew "מבוא לבינה מלאכותית"; "Intro to AI".
-  - "Compilation Theory": course number 02360360; Hebrew "תורת הקומפילציה".
-  - "Physics 2MM": course number 01140075; Hebrew "פיסיקה 2ממ" (also spelled פיזיקה). It is 2MM, not "Physics 2M" or any other Physics course.
-  - "Introduction to Computer Networks": course number 02360334; Hebrew "מבוא לרשתות מחשבים"; "Computer Networks".
-  - Do not confuse similar courses or numbers (e.g. 02360501, 02360360 and 02360334 are three different courses). Only use a specific course when the email clearly refers to it; otherwise use "General".
+- For "course": identify the course like a careful human reader, from the subject first, then the body (including a forwarded original message; ignore older quoted replies). Accept obvious typos, abbreviations and Hebrew/English variants (e.g. "Physics 2M" means "Physics 2MM"). An exact course number (with or without the leading zero) takes priority over names. Never choose the closest course: if the email names a different course or number, or you are not sure, use "General" and courseEvidence "". Your answer is validated against courseEvidence.
+- courseEvidence must be copied verbatim from the email. If the email covers several courses, give each item the words naming its own course.
+- Courses (number, Hebrew name): Numerical Algorithms 02340125 "אלגוריתמים נומריים"; Introduction to Artificial Intelligence 02360501 "מבוא לבינה מלאכותית"; Compilation Theory 02360360 "תורת הקומפילציה"; Physics 2MM 01140075 "פיסיקה 2ממ" (not Physics 1 or other Physics courses); Introduction to Computer Networks 02360334 "מבוא לרשתות מחשבים".
 - Default timezone is Asia/Jerusalem for all extracted dates and times unless the email explicitly states another timezone.
 - If another timezone is explicitly stated (e.g. UTC, PST, GMT+2), keep that timezone and encode it in dueAt.
 - Today's date for reference: ${new Date().toISOString().split("T")[0]}
@@ -490,7 +429,7 @@ function tryHeuristicFallbackExtraction(
   subject: string,
   body: string,
   emailFrom: string | undefined,
-  inferredCourse: Exclude<Course, "General"> | null,
+  confirmedCourse: Exclude<Course, "General">,
 ): DeadlineItem[] {
   const text = `${subject}\n${body}`;
   const lower = text.toLowerCase();
@@ -518,13 +457,11 @@ function tryHeuristicFallbackExtraction(
     displayDate = formatDueAtDisplayDate(dueAt);
   }
 
-  const course: Course = inferredCourse ?? "General";
-
   return [
     {
       id: randomUUID(),
       category: "Course",
-      course,
+      course: confirmedCourse,
       title,
       type: "Homework",
       dueAt,
@@ -541,10 +478,13 @@ export async function extractFromEmail(
   body: string,
   emailFrom?: string,
 ): Promise<ExtractionResult> {
+  body = stripReplyHistory(body);
   const userMessage = `Email from: ${emailFrom ?? "(unknown)"}\nEmail subject: ${subject}\n\nEmail body:\n${body}`;
 
-  // Backup classifier for cases where course appears only in sender name/address.
-  const inferredCourse = inferCourseFromText(`${emailFrom ?? ""}\n${subject}\n${body}`);
+  // Nothing in the email can point at a supported course: skip the model call entirely.
+  if (mentionedCourses(`${subject}\n${body}`).length === 0) {
+    return { relevant: false, items: [], rejectionReason: "no-supported-course" };
+  }
 
   const response = await client.chat.completions.create({
     model: "gpt-4o-mini",
@@ -564,31 +504,38 @@ export async function extractFromEmail(
   }
 
   // Assign unique IDs to each extracted item
+  let rejectedForCourse = 0;
   const items: DeadlineItem[] = parsed.items
-    .map((item) => {
-      const category = classifyItemCategory(item.type as DeadlineType);
-      const normalizedCourse: Course = SUPPORTED_COURSES.includes(item.course as Course)
-        ? (item.course as Course)
-        : "General";
-      const finalCourse: Course =
-        category === "Course" && inferredCourse ? inferredCourse : normalizedCourse;
-      const normalizationContext = `${item.sourceSentence ?? ""}\n${userMessage}`;
+    .map((item): DeadlineItem | null => {
+      const { courseEvidence, ...rest } = item as DeadlineItem & { courseEvidence?: string };
+      const category = classifyItemCategory(rest.type as DeadlineType);
+      const confirmedCourse = validateItemCourse(subject, body, rest.course, courseEvidence);
+
+      // Course items (homework, quizzes) need a confirmed supported course; never "General".
+      if (category === "Course" && !confirmedCourse) {
+        rejectedForCourse += 1;
+        return null;
+      }
+
+      const finalCourse: Course = confirmedCourse ?? "General";
+      const normalizationContext = `${rest.sourceSentence ?? ""}\n${userMessage}`;
       const normalizedDueAt = normalizeDeadlineDueAtFromSource(
-        item.dueAt ?? "",
+        rest.dueAt ?? "",
         normalizationContext,
       );
 
       return {
-        ...item,
+        ...rest,
         id: randomUUID(),
         category,
         course: finalCourse,
-        type: item.type as DeadlineType,
-        status: item.status as DeadlineStatus,
+        type: rest.type as DeadlineType,
+        status: rest.status as DeadlineStatus,
         dueAt: normalizedDueAt,
-        displayDate: normalizedDueAt ? formatDueAtDisplayDate(normalizedDueAt) : (item.displayDate ?? "TBD"),
+        displayDate: normalizedDueAt ? formatDueAtDisplayDate(normalizedDueAt) : (rest.displayDate ?? "TBD"),
       };
     })
+    .filter((item): item is DeadlineItem => item !== null)
     .map((item) => enforcePrimaryDeadlinePolicy(item, userMessage))
     .filter((item): item is DeadlineItem => item !== null)
     .map(normalizeHomeworkDeadlineText)
@@ -596,11 +543,16 @@ export async function extractFromEmail(
     .filter((item) => !isHomeworkAnnouncementWithoutDeadline(item));
 
   if (items.length === 0) {
-    const fallbackItems = tryHeuristicFallbackExtraction(subject, body, emailFrom, inferredCourse);
-    if (fallbackItems.length > 0) {
-      return { relevant: true, items: fallbackItems };
+    const fallbackCourse = singleEmailCourse(subject, body);
+    if (fallbackCourse) {
+      const fallbackItems = tryHeuristicFallbackExtraction(subject, body, emailFrom, fallbackCourse);
+      if (fallbackItems.length > 0) {
+        return { relevant: true, items: fallbackItems };
+      }
     }
-    return { relevant: false, items: [] };
+    return rejectedForCourse > 0
+      ? { relevant: false, items: [], rejectionReason: "no-supported-course" }
+      : { relevant: false, items: [] };
   }
 
   return { relevant: true, items };

@@ -176,11 +176,14 @@ export default defineEventHandler(async (event) => {
         ok: true,
         extracted: 0,
         inserted: 0,
-        reason: "not relevant",
+        reason: result.rejectionReason === "no-supported-course" ? "no supported course" : "not relevant",
       };
     }
 
-    const homeworkItems = result.items.filter(isHomeworkItem);
+    // Homework is only saved with a validated supported course (never "General").
+    const homeworkItems = result.items
+      .filter(isHomeworkItem)
+      .filter((item) => item.course !== "General");
 
     if (homeworkItems.length === 0) {
       await markMessageProcessed(idempotencyKey);
