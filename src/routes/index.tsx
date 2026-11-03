@@ -17,32 +17,7 @@ type CourseCatalogEntry = {
   aliases: string[];
 };
 
-const COURSE_CATALOG: CourseCatalogEntry[] = [
-  {
-    name: "Operating Systems",
-    number: "02340123",
-    hebrewName: "מערכות הפעלה",
-    aliases: ["Operating Systems", "Operating System", "OS", "מערכות הפעלה", "02340123"],
-  },
-  {
-    name: "ATAM",
-    number: "02340118",
-    hebrewName: "ארגון ותכנות המחשב",
-    aliases: ["ATAM", "ארגון ותכנות המחשב", "02340118"],
-  },
-  {
-    name: "Algorithms 1",
-    number: "02340247",
-    hebrewName: "אלגוריתמים 1",
-    aliases: ["Algorithms 1", "Algorithms", "Algo 1", "אלגוריתמים 1", "02340247"],
-  },
-  {
-    name: "System Programming",
-    number: "02340124",
-    hebrewName: "מבוא לתכנות מערכות",
-    aliases: ["System Programming", "מבוא לתכנות מערכות", "02340124"],
-  },
-];
+const COURSE_CATALOG: CourseCatalogEntry[] = [];
 
 const COURSE_ORDER: Course[] = COURSE_CATALOG.map((course) => course.name);
 

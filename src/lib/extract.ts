@@ -18,33 +18,10 @@ import {
   parseDeadlineDueAt,
 } from "./timezone";
 
-const SUPPORTED_COURSES: Course[] = [
-  "Operating Systems",
-  "Algorithms 1",
-  "ATAM",
-  "System Programming",
-  "General",
-];
+const SUPPORTED_COURSES: Course[] = ["General"];
 const COURSE_ITEM_TYPES: DeadlineType[] = ["Homework", "Quiz/Exam"];
 
-const COURSE_HINTS: Array<{ course: Exclude<Course, "General">; patterns: RegExp[] }> = [
-  {
-    course: "Operating Systems",
-    patterns: [/02340123/i, /operating\s*systems?/i, /מערכות\s*הפעלה/],
-  },
-  {
-    course: "Algorithms 1",
-    patterns: [/02340247/i, /algorithms?\s*1/i, /אלגוריתמים\s*1/],
-  },
-  {
-    course: "ATAM",
-    patterns: [/02340118/i, /\batam\b/i, /ארגון\s*ותכנות\s*המחשב/, /את"?ם/],
-  },
-  {
-    course: "System Programming",
-    patterns: [/02340124/i, /\bsystem\s*programming\b/i, /מערכות\s*תכנות/i],
-  },
-];
+const COURSE_HINTS: Array<{ course: Exclude<Course, "General">; patterns: RegExp[] }> = [];
 
 function inferCourseFromText(text: string): Exclude<Course, "General"> | null {
   for (const hint of COURSE_HINTS) {
@@ -83,7 +60,7 @@ Return a JSON object with this exact shape:
   "relevant": true | false,
   "items": [
     {
-      "course": one of: "Operating Systems" | "Algorithms 1" | "ATAM" | "General",
+      "course": "General",
       "title": short title of the item (e.g. "HW2", "Quiz 3", "Lab Report"),
       "type": one of: "Homework" | "Quiz/Exam" | "Activity/Event" | "Registration" | "Announcement",
       "dueAt": ISO 8601 datetime string (e.g. "2025-06-15T23:59:00") or null if no specific deadline,
@@ -106,10 +83,6 @@ Rules:
   - If both normal due date and penalized late-submission date appear, keep the normal due date as dueAt and mention late policy details in description/sourceSentence.
   - If only a penalized late-submission window appears and no normal deadline is provided, do not invent a normal deadline.
 - For "course": map to the closest supported course. If it doesn't match any specific course, use "General".
-- Course mapping hints:
-  - "Operating Systems" if email mentions "מערכות הפעלה" or course code "02340123".
-  - "Algorithms 1" if email mentions "אלגוריתמים 1" or course code "02340247".
-  - "ATAM" if email mentions "ארגון ותכנות המחשב", "את"ם", "ATAM", or course code "02340118".
 - Default timezone is Asia/Jerusalem for all extracted dates and times unless the email explicitly states another timezone.
 - If another timezone is explicitly stated (e.g. UTC, PST, GMT+2), keep that timezone and encode it in dueAt.
 - Today's date for reference: ${new Date().toISOString().split("T")[0]}
