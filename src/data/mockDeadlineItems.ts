@@ -9,7 +9,13 @@ export type DeadlineStatus = "Upcoming" | "Urgent" | "Expired" | "Completed";
 
 export type DeadlineCategory = "Course" | "Other";
 
-export type Course = "General";
+export type Course =
+  | "Numerical Algorithms"
+  | "Introduction to Artificial Intelligence"
+  | "Compilation Theory"
+  | "Physics 2MM"
+  | "Introduction to Computer Networks"
+  | "General";
 
 export interface DeadlineItem {
   id: string;
