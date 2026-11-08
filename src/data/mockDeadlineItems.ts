@@ -15,6 +15,10 @@ export type Course =
   | "Compilation Theory"
   | "Physics 2MM"
   | "Introduction to Computer Networks"
+  | "Introduction to Computer Science"
+  | "Introduction to Set Theory and Automata for CS"
+  | "Infinitesimal Calculus 1M"
+  | "Algebra AM"
   | "General";
 
 export interface DeadlineItem {

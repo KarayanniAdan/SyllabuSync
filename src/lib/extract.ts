@@ -56,7 +56,7 @@ Return a JSON object with this exact shape:
   "relevant": true | false,
   "items": [
     {
-      "course": one of: "Numerical Algorithms" | "Introduction to Artificial Intelligence" | "Compilation Theory" | "Physics 2MM" | "Introduction to Computer Networks" | "General",
+      "course": one of: "Numerical Algorithms" | "Introduction to Artificial Intelligence" | "Compilation Theory" | "Physics 2MM" | "Introduction to Computer Networks" | "Introduction to Computer Science" | "Introduction to Set Theory and Automata for CS" | "Infinitesimal Calculus 1M" | "Algebra AM" | "General",
       "courseEvidence": the exact words copied from the email subject or body that identify the course (e.g. "Physics 2M", "תורת הקומפילציה", "02360360"), or "" if none,
       "title": short title of the item (e.g. "HW2", "Quiz 3", "Lab Report"),
       "type": one of: "Homework" | "Quiz/Exam" | "Activity/Event" | "Registration" | "Announcement",
@@ -81,7 +81,7 @@ Rules:
   - If only a penalized late-submission window appears and no normal deadline is provided, do not invent a normal deadline.
 - For "course": identify the course like a careful human reader, from the subject first, then the body (including a forwarded original message; ignore older quoted replies). Accept obvious typos, abbreviations and Hebrew/English variants (e.g. "Physics 2M" means "Physics 2MM"). An exact course number (with or without the leading zero) takes priority over names. Never choose the closest course: if the email names a different course or number, or you are not sure, use "General" and courseEvidence "". Your answer is validated against courseEvidence.
 - courseEvidence must be copied verbatim from the email. If the email covers several courses, give each item the words naming its own course.
-- Courses (number, Hebrew name): Numerical Algorithms 02340125 "אלגוריתמים נומריים"; Introduction to Artificial Intelligence 02360501 "מבוא לבינה מלאכותית"; Compilation Theory 02360360 "תורת הקומפילציה"; Physics 2MM 01140075 "פיסיקה 2ממ" (not Physics 1 or other Physics courses); Introduction to Computer Networks 02360334 "מבוא לרשתות מחשבים".
+- Courses (number, Hebrew name): Numerical Algorithms 02340125 "אלגוריתמים נומריים"; Introduction to Artificial Intelligence 02360501 "מבוא לבינה מלאכותית"; Compilation Theory 02360360 "תורת הקומפילציה"; Physics 2MM 01140075 "פיסיקה 2ממ" (not Physics 1 or other Physics courses); Introduction to Computer Networks 02360334 "מבוא לרשתות מחשבים"; Introduction to Computer Science 02340114/7 "מבוא למדעי המחשב" (02340114, 02340117 and "02340114/7" are all this one course; use "Introduction to Computer Science" for any of them); Introduction to Set Theory and Automata for CS 02340129 "מבוא לתורת הקבוצות ואוטומטים למדמ\"ח"; Infinitesimal Calculus 1M 01040031 "חשבון אינפיניטסימלי 1מ'" (not other Calculus courses); Algebra AM 01040166 "אלגברה אמ'" (not other Algebra courses).
 - Default timezone is Asia/Jerusalem for all extracted dates and times unless the email explicitly states another timezone.
 - If another timezone is explicitly stated (e.g. UTC, PST, GMT+2), keep that timezone and encode it in dueAt.
 - Today's date for reference: ${new Date().toISOString().split("T")[0]}

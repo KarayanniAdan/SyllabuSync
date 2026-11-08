@@ -27,6 +27,30 @@ const COURSES: Array<{ course: SupportedCourse; numbers: string[]; keywords: Reg
     numbers: ["02360334", "2360334", "236334"],
     keywords: /comput\w*\s+net|רשתות\s+מחשב/,
   },
+  {
+    // 02340114 and 02340117 are one combined course; "02340114/7" matches via its first number.
+    course: "Introduction to Computer Science",
+    numbers: ["02340114", "2340114", "234114", "02340117", "2340117", "234117"],
+    keywords: /\bintro\w*\s+to\s+(?:computer\s+science|cs)\b|מבוא\s+למדעי\s+המחשב|מבוא\s+למדמח/,
+  },
+  {
+    course: "Introduction to Set Theory and Automata for CS",
+    numbers: ["02340129", "2340129", "234129"],
+    keywords: /set\s+theory|automata|תורת\s+הקבוצות|אוטומט/,
+  },
+  {
+    course: "Infinitesimal Calculus 1M",
+    numbers: ["01040031", "1040031", "104031"],
+    // Only the 1M variant; "Calculus 1" / "Calculus 2" are other courses.
+    keywords:
+      /(?:infinitesimal(?:\s+calculus)?|calculus|infi|אינפי[\u05d0-\u05ea]*)[\s-]*1\s*(?:m|מ)(?![a-z\u05d0-\u05ea\d])/,
+  },
+  {
+    course: "Algebra AM",
+    numbers: ["01040166", "1040166", "104166"],
+    // Only the AM variant; "Algebra A" / "Algebra 1" are other courses.
+    keywords: /(?:algebra|אלגברה)[\s-]*(?:am|אמ)(?![a-z\u05d0-\u05ea\d])/,
+  },
 ];
 
 const NUMBER_PATTERNS = COURSES.map((c) => new RegExp(`(?<!\\d)(?:${c.numbers.join("|")})(?!\\d)`));

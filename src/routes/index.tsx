@@ -5,103 +5,11 @@ import type { Course, DeadlineItem } from "@/data/mockDeadlineItems";
 import { cn } from "@/lib/utils";
 import { Check, GraduationCap, Search, X } from "lucide-react";
 import { formatDueAtForDisplay, getDeadlineTimestamp } from "@/lib/timezone";
+import { COURSE_CATALOG, courseMatchesSearch } from "@/data/course-catalog";
 
 const SELECTED_COURSES_STORAGE_KEY = "syllabusync.homework.selected-courses";
 const VISIBLE_COURSES_STORAGE_KEY = "syllabusync.homework.visible-courses";
 const COMPLETED_HOMEWORK_IDS_STORAGE_KEY = "syllabusync.homework.completed-ids";
-
-type CourseCatalogEntry = {
-  name: Course;
-  number: string;
-  hebrewName: string;
-  aliases: string[];
-};
-
-const COURSE_CATALOG: CourseCatalogEntry[] = [
-  {
-    name: "Numerical Algorithms",
-    number: "02340125",
-    hebrewName: "אלגוריתמים נומריים",
-    aliases: [
-      "Numerical Algorithms",
-      "Numerical Algorithm",
-      "Numerical Algo",
-      "Numerical",
-      "אלגוריתמים נומריים",
-      "אלגו נומריים",
-      "02340125",
-      "2340125",
-      "234125",
-    ],
-  },
-  {
-    name: "Introduction to Artificial Intelligence",
-    number: "02360501",
-    hebrewName: "מבוא לבינה מלאכותית",
-    aliases: [
-      "Introduction to Artificial Intelligence",
-      "Intro to Artificial Intelligence",
-      "Intro to AI",
-      "Artificial Intelligence",
-      "AI",
-      "מבוא לבינה מלאכותית",
-      "בינה מלאכותית",
-      "02360501",
-      "2360501",
-      "236501",
-    ],
-  },
-  {
-    name: "Compilation Theory",
-    number: "02360360",
-    hebrewName: "תורת הקומפילציה",
-    aliases: [
-      "Compilation Theory",
-      "Theory of Compilation",
-      "Compilation",
-      "Compilers",
-      "תורת הקומפילציה",
-      "קומפילציה",
-      "02360360",
-      "2360360",
-      "236360",
-    ],
-  },
-  {
-    name: "Physics 2MM",
-    number: "01140075",
-    hebrewName: "פיסיקה 2ממ",
-    aliases: [
-      "Physics 2MM",
-      "Physics 2 MM",
-      "Physics 2",
-      "Physics",
-      "פיסיקה 2ממ",
-      "פיזיקה 2ממ",
-      "פיסיקה",
-      "פיזיקה",
-      "01140075",
-      "1140075",
-      "114075",
-    ],
-  },
-  {
-    name: "Introduction to Computer Networks",
-    number: "02360334",
-    hebrewName: "מבוא לרשתות מחשבים",
-    aliases: [
-      "Introduction to Computer Networks",
-      "Intro to Computer Networks",
-      "Computer Networks",
-      "Networks",
-      "מבוא לרשתות מחשבים",
-      "רשתות מחשבים",
-      "02360334",
-      "2360334",
-      "236334",
-    ],
-  },
-];
 
 const COURSE_ORDER: Course[] = COURSE_CATALOG.map((course) => course.name);
 
@@ -141,15 +49,6 @@ function getAvailableHomeworkCourses(items: DeadlineItem[]) {
     }
   }
   return COURSE_ORDER.filter((course) => available.has(course));
-}
-
-function courseMatchesSearch(course: CourseCatalogEntry, query: string) {
-  const normalizedQuery = query.trim().toLowerCase();
-  if (!normalizedQuery) return true;
-
-  return [course.name, course.number, course.hebrewName, ...course.aliases].some((term) =>
-    term.toLowerCase().includes(normalizedQuery),
-  );
 }
 
 function formatDueDate(item: DeadlineItem) {

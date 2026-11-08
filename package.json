@@ -8,6 +8,7 @@
     "webhook": "bun run scripts/webhook-server.ts",
     "test:extract-late-policy": "bun run scripts/test-extract-late-policy.ts",
     "test:timezone": "bun run scripts/test-timezone.ts",
+    "test:courses": "bun run scripts/test-courses.ts",
     "build": "vite build",
     "build:dev": "vite build --mode development",
     "preview": "vite preview",
