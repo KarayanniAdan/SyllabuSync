@@ -4,8 +4,8 @@ import type { DeadlineCategory, DeadlineItem } from "../../src/data/mockDeadline
 import {
   formatDueAtDisplayDate,
   normalizeDeadlineDueAtFromSource,
-  parseDeadlineDueAt,
 } from "../../src/lib/timezone";
+import { isAmbiguousVariantExtension, isLogicalDuplicate } from "../../src/lib/homework-identity";
 
 function firstEnvLine(value: string | undefined): string | undefined {
   return value
@@ -42,57 +42,9 @@ function getItemCategory(item: Pick<DeadlineItem, "type" | "course">): DeadlineC
   return item.type === "Homework" || item.type === "Quiz/Exam" ? "Course" : "Other";
 }
 
-function normalizeTitleKey(title: string): string {
-  return title
-    .toLowerCase()
-    .replace(/[^a-z0-9\s]/g, "")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-function normalizeSemanticTitleKey(item: DeadlineItem): string {
-  const base = normalizeTitleKey(item.title);
-
-  if (item.type !== "Homework") return base;
-
-  const canonical = base
-    .replace(/\bhome\s*work\b/g, "homework")
-    .replace(/\bexercise\b/g, "assignment");
-
-  const numberMatch = canonical.match(/\b(?:hw|homework|assignment)\s*(\d{1,3})\b/);
-  if (numberMatch) return `hw${numberMatch[1]}`;
-
-  const reverseNumberMatch = canonical.match(/\b(\d{1,3})\s*(?:hw|homework|assignment)\b/);
-  if (reverseNumberMatch) return `hw${reverseNumberMatch[1]}`;
-
-  return canonical;
-}
-
-function toTimestampOrNull(dueAt: string): number | null {
-  const parsed = parseDeadlineDueAt(dueAt);
-  return parsed ? parsed.getTime() : null;
-}
-
-function isLikelySameAssignmentWindow(existing: DeadlineItem, incoming: DeadlineItem): boolean {
-  const existingTs = toTimestampOrNull(existing.dueAt);
-  const incomingTs = toTimestampOrNull(incoming.dueAt);
-  if (existingTs === null || incomingTs === null) return true;
-
-  const diffDays = Math.abs(existingTs - incomingTs) / (24 * 60 * 60 * 1000);
-  return diffDays <= 120;
-}
-
-function isLogicalDuplicate(existing: DeadlineItem, incoming: DeadlineItem): boolean {
-  return (
-    existing.category === incoming.category &&
-    existing.course === incoming.course &&
-    existing.type === incoming.type &&
-    normalizeSemanticTitleKey(existing) === normalizeSemanticTitleKey(incoming) &&
-    isLikelySameAssignmentWindow(existing, incoming)
-  );
-}
-
-async function findLogicalDuplicate(item: DeadlineItem): Promise<DeadlineItem | null> {
+async function findLogicalDuplicate(
+  item: DeadlineItem,
+): Promise<{ match: DeadlineItem | null; skip: boolean }> {
   const supabase = getSupabase();
   const { data, error } = await supabase.from("deadline_items").select("*");
 
@@ -101,7 +53,8 @@ async function findLogicalDuplicate(item: DeadlineItem): Promise<DeadlineItem | 
   }
 
   const existingItems = (data ?? []).map(rowToDeadlineItem);
-  return existingItems.find((existing) => isLogicalDuplicate(existing, item)) ?? null;
+  const match = existingItems.find((existing) => isLogicalDuplicate(existing, item)) ?? null;
+  return { match, skip: !match && isAmbiguousVariantExtension(existingItems, item) };
 }
 
 function rowToDeadlineItem(row: any): DeadlineItem {
@@ -150,7 +103,8 @@ export async function saveDeadline(item: DeadlineItem): Promise<void> {
     displayDate: normalizedDueAt ? formatDueAtDisplayDate(normalizedDueAt) : item.displayDate,
   };
 
-  const existing = await findLogicalDuplicate(normalizedItem);
+  const { match: existing, skip } = await findLogicalDuplicate(normalizedItem);
+  if (skip) return;
   const targetItem = existing ? { ...normalizedItem, id: existing.id } : normalizedItem;
 
   const { error } = await supabase.from("deadline_items").upsert(

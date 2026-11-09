@@ -14,6 +14,7 @@ import {
   stripReplyHistory,
   validateItemCourse,
 } from "./course-matching";
+import { DEADLINE_CHANGE_PATTERN } from "./homework-identity";
 import {
   buildAcademicDueAtIso,
   extractExplicitClockFromText,
@@ -88,6 +89,11 @@ Rules:
 - Resolve relative dates (e.g. "this Sunday", "next Thursday", "tomorrow") into absolute calendar dates using today's date.
 - Never use relative wording in dueAt/displayDate. If a relative date appears in the email, convert it to an absolute date.
 - One email can produce multiple items if it mentions multiple deadlines or events.
+- Homework titles: copy the assignment identifier exactly as the email states it. Use "HW<number>" for numbered homework (e.g. "HW2"), "WebWork <number>" for numbered WebWork (e.g. "WebWork 3"), and keep qualifiers: "HW2 Wet", "HW2 Dry", "WebWork 2 Part A". Homework 2 Wet / תרגיל בית 2 רטוב is "HW2 Wet"; Homework 2 Dry / תרגיל בית 2 יבש is "HW2 Dry". Titles must be in English.
+- If an email announces homework without stating its number, use the title "HW" (or "WebWork" for WebWork). NEVER invent, guess or increment a number from earlier assignments. If the email gives the assignment its own distinctive name, use that name as the title.
+- WebWork assignments are homework: use type "Homework" for them. Keep WebWork and regular homework separate even when numbers match.
+- If an email only says that "the homework deadline" was extended and doesn't say which assignment, return no item for it.
+- A homework item needs a concrete deadline stated in the email; never invent a date or time.
 - If no specific date/time is mentioned, set dueAt to null and use a descriptive displayDate like "TBD".`;
 
 const LATE_SUBMISSION_PATTERN =
@@ -391,38 +397,23 @@ function normalizeHomeworkDeadlineText(item: DeadlineItem): DeadlineItem {
   };
 }
 
-const WEEKDAY_INDEX: Record<string, number> = {
-  sunday: 0,
-  monday: 1,
-  tuesday: 2,
-  wednesday: 3,
-  thursday: 4,
-  friday: 5,
-  saturday: 6,
-};
+const UNNUMBERED_TITLE_PATTERN = /^(?:hw|webwork)(?:\s+(?:wet|dry))?$/i;
+const GENERIC_HOMEWORK_TITLE_PATTERN = /^(?:homework|home\s*work|assignment|exercise|problem\s*set)$/i;
 
-function nextWeekdayAtTime(weekday: number, hour: number, minute: number): Date {
-  const now = new Date();
-  const nowParts = getAcademicNowDateTimeParts(now);
+/** A bare "Homework"/"Assignment" title becomes "HW"; numbers and identifiers are never added. */
+function normalizeGenericHomeworkTitle(item: DeadlineItem): DeadlineItem {
+  if (item.type !== "Homework") return item;
+  const title = item.title.trim();
+  return GENERIC_HOMEWORK_TITLE_PATTERN.test(title) ? { ...item, title: "HW" } : item;
+}
 
-  let dayDelta = (weekday - nowParts.weekday + 7) % 7;
-  if (
-    dayDelta === 0 &&
-    (hour < nowParts.hour || (hour === nowParts.hour && minute <= nowParts.minute))
-  ) {
-    dayDelta = 7;
-  }
-
-  const shifted = new Date(Date.UTC(nowParts.year, nowParts.month - 1, nowParts.day + dayDelta));
-  const dueAtIso = buildAcademicDueAtIso(
-    shifted.getUTCFullYear(),
-    shifted.getUTCMonth() + 1,
-    shifted.getUTCDate(),
-    hour,
-    minute,
+/** An extension that doesn't identify its assignment ("HW"/"WebWork" without a number) can't be applied safely. */
+function isAmbiguousUnnumberedExtension(item: DeadlineItem): boolean {
+  return (
+    item.type === "Homework" &&
+    UNNUMBERED_TITLE_PATTERN.test(item.title.trim()) &&
+    DEADLINE_CHANGE_PATTERN.test(`${item.sourceSentence}\n${item.description}`)
   );
-
-  return new Date(dueAtIso);
 }
 
 function tryHeuristicFallbackExtraction(
@@ -439,38 +430,31 @@ function tryHeuristicFallbackExtraction(
   if (!looksHomework || !hasDeadlineSignal) return [];
 
   const hwNumber = text.match(/(?:\bHW\b|homework|assignment)\s*(\d{1,3})/i)?.[1];
-  const title = hwNumber ? `HW${hwNumber}` : "Homework";
+  const title = hwNumber ? `HW${hwNumber}` : "HW";
 
-  let dueAt = "";
-  let displayDate = "TBD";
-
-  const weekdayMatch = text.match(
-    /\b(sunday|monday|tuesday|wednesday|thursday|friday|saturday)\b(?:\s+at\s+(\d{1,2}):(\d{2}))?/i,
+  // Only an explicit calendar date and an explicit clock time count; never guess either.
+  const clock = extractExplicitClockFromText(text);
+  if (!clock) return [];
+  const mentions = splitIntoClauses(text).flatMap((clause) =>
+    extractDateMentionsFromClause(clause, getAcademicNowDateTimeParts().year, clock.hour, clock.minute),
   );
+  if (new Set(mentions.map((m) => m.dateKey)).size !== 1) return [];
 
-  if (weekdayMatch) {
-    const weekday = WEEKDAY_INDEX[weekdayMatch[1].toLowerCase()];
-    const hour = Number(weekdayMatch[2] ?? "23");
-    const minute = Number(weekdayMatch[3] ?? "59");
-    const target = nextWeekdayAtTime(weekday, hour, minute);
-    dueAt = target.toISOString();
-    displayDate = formatDueAtDisplayDate(dueAt);
-  }
+  const dueAt = mentions[0].dueAt;
+  const item: DeadlineItem = {
+    id: randomUUID(),
+    category: "Course",
+    course: confirmedCourse,
+    title,
+    type: "Homework",
+    dueAt,
+    displayDate: formatDueAtDisplayDate(dueAt),
+    description: `Submission deadline for ${title}.`,
+    status: "Upcoming",
+    sourceSentence: body.trim() || subject,
+  };
 
-  return [
-    {
-      id: randomUUID(),
-      category: "Course",
-      course: confirmedCourse,
-      title,
-      type: "Homework",
-      dueAt,
-      displayDate,
-      description: `Submission deadline for ${title}.`,
-      status: "Upcoming",
-      sourceSentence: body.trim() || subject,
-    },
-  ];
+  return isAmbiguousUnnumberedExtension(item) ? [] : [item];
 }
 
 export async function extractFromEmail(
@@ -539,6 +523,8 @@ export async function extractFromEmail(
     .map((item) => enforcePrimaryDeadlinePolicy(item, userMessage))
     .filter((item): item is DeadlineItem => item !== null)
     .map(normalizeHomeworkDeadlineText)
+    .map(normalizeGenericHomeworkTitle)
+    .filter((item) => !isAmbiguousUnnumberedExtension(item))
     .filter((item) => !failsDateQualityGate(item))
     .filter((item) => !isHomeworkAnnouncementWithoutDeadline(item));
 

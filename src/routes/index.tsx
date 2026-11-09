@@ -6,6 +6,15 @@ import { cn } from "@/lib/utils";
 import { Check, GraduationCap, Search, X } from "lucide-react";
 import { formatDueAtForDisplay, getDeadlineTimestamp } from "@/lib/timezone";
 import { COURSE_CATALOG, courseMatchesSearch } from "@/data/course-catalog";
+import { classifyHomework } from "@/lib/homework-sections";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 
 const SELECTED_COURSES_STORAGE_KEY = "syllabusync.homework.selected-courses";
 const VISIBLE_COURSES_STORAGE_KEY = "syllabusync.homework.visible-courses";
@@ -13,7 +22,7 @@ const COMPLETED_HOMEWORK_IDS_STORAGE_KEY = "syllabusync.homework.completed-ids";
 
 const COURSE_ORDER: Course[] = COURSE_CATALOG.map((course) => course.name);
 
-type Tone = "urgent" | "upcoming" | "completed" | "expired";
+type Tone = "urgent" | "upcoming" | "completed" | "expired" | "unknown";
 
 function isBrowser() {
   return typeof window !== "undefined";
@@ -41,6 +50,10 @@ function getCourseInfo(course: Course) {
   return COURSE_CATALOG.find((entry) => entry.name === course);
 }
 
+function getCourseDisplayName(course: Course) {
+  return getCourseInfo(course)?.hebrewName ?? course;
+}
+
 function getAvailableHomeworkCourses(items: DeadlineItem[]) {
   const available = new Set<Course>();
   for (const item of items) {
@@ -57,11 +70,11 @@ function formatDueDate(item: DeadlineItem) {
   return item.displayDate || item.dueAt;
 }
 
-function getTimeRemaining(dueAt: string) {
+function getTimeRemaining(dueAt: string, now: number) {
   const dueMs = getDeadlineTimestamp(dueAt);
-  if (dueMs === null) return { label: "Expired", tone: "expired" as Tone };
+  if (dueMs === null) return { label: "Deadline unknown", tone: "unknown" as Tone };
 
-  const diffMs = dueMs - Date.now();
+  const diffMs = dueMs - now;
   if (diffMs <= 0) return { label: "Expired", tone: "expired" as Tone };
 
   const hourMs = 60 * 60 * 1000;
@@ -99,7 +112,7 @@ function getToneStyles(tone: Tone) {
       rowBg: "bg-emerald-50/40",
     };
   }
-  if (tone === "expired") {
+  if (tone === "expired" || tone === "unknown") {
     return {
       border: "border-l-slate-300",
       badge: "bg-slate-100 text-slate-600 ring-1 ring-slate-200",
@@ -176,7 +189,14 @@ function Dashboard() {
   const [searchQuery, setSearchQuery] = useState("");
   const [searchOpen, setSearchOpen] = useState(false);
   const [showCompleted, setShowCompleted] = useState(false);
+  const [showPast, setShowPast] = useState(false);
+  const [now, setNow] = useState(() => Date.now());
   const [hydrated, setHydrated] = useState(false);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 60_000);
+    return () => window.clearInterval(timer);
+  }, []);
 
   useEffect(() => {
     const storedSelected = readStoredList(SELECTED_COURSES_STORAGE_KEY);
@@ -256,9 +276,20 @@ function Dashboard() {
         (item) =>
           selectedCourseList.includes(item.course) &&
           visibleCourseList.includes(item.course) &&
-          !completedIdSet.has(item.id),
+          classifyHomework(item, completedIdSet, now) === "active",
       ),
-    [homeworkItems, selectedCourseList, visibleCourseList, completedIdSet],
+    [homeworkItems, selectedCourseList, visibleCourseList, completedIdSet, now],
+  );
+
+  const pastHomework = useMemo(
+    () =>
+      homeworkItems.filter(
+        (item) =>
+          selectedCourseList.includes(item.course) &&
+          visibleCourseList.includes(item.course) &&
+          classifyHomework(item, completedIdSet, now) === "past",
+      ),
+    [homeworkItems, selectedCourseList, visibleCourseList, completedIdSet, now],
   );
 
   const completedHomework = useMemo(
@@ -270,8 +301,8 @@ function Dashboard() {
   );
 
   const urgentCount = useMemo(
-    () => remainingHomework.filter((item) => getTimeRemaining(item.dueAt).tone === "urgent").length,
-    [remainingHomework],
+    () => remainingHomework.filter((item) => getTimeRemaining(item.dueAt, now).tone === "urgent").length,
+    [remainingHomework, now],
   );
 
   const suggestions = useMemo(() => {
@@ -324,15 +355,41 @@ function Dashboard() {
       <aside className="h-full min-h-0 border-r border-border bg-white px-4 py-4">
         <div className="flex h-full min-h-0 flex-col">
           <div className="shrink-0">
-            <div className="flex items-center gap-2">
-              <div className="grid h-9 w-9 place-items-center rounded-xl bg-slate-900 text-white">
-                <GraduationCap className="h-4 w-4" />
-              </div>
-              <div>
-                <div className="text-sm font-semibold">SyllabuSync</div>
-                <div className="text-xs text-muted-foreground">Homework control center</div>
-              </div>
-            </div>
+            <Dialog>
+              <DialogTrigger asChild>
+                <button
+                  type="button"
+                  aria-label="About SyllabuSync"
+                  className="flex w-full items-center gap-2 rounded-xl text-left transition-opacity hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400"
+                >
+                  <div className="grid h-9 w-9 place-items-center rounded-xl bg-slate-900 text-white">
+                    <GraduationCap className="h-4 w-4" />
+                  </div>
+                  <div>
+                    <div className="text-sm font-semibold">SyllabuSync</div>
+                    <div className="text-xs text-muted-foreground">Homework control center</div>
+                  </div>
+                </button>
+              </DialogTrigger>
+              <DialogContent className="max-w-[calc(100vw-2rem)] sm:max-w-md">
+                <DialogHeader>
+                  <DialogTitle>About SyllabuSync</DialogTitle>
+                  <DialogDescription className="text-sm leading-relaxed text-slate-700">
+                    SyllabuSync keeps track of homework deadlines from Technion course announcements,
+                    bringing everything together in one simple place so you can focus on studying
+                    instead of keeping track of dates.
+                  </DialogDescription>
+                </DialogHeader>
+                <p className="text-sm leading-relaxed text-slate-700">
+                  <span className="font-semibold text-slate-900">A quick reminder:</span> Deadlines may be
+                  missing, outdated, or incorrect. Always double-check important information with official
+                  course announcements.
+                </p>
+                <p className="text-sm italic text-muted-foreground">
+                  Made for Technion students, by a Technion student. 🎓
+                </p>
+              </DialogContent>
+            </Dialog>
 
             <div className="mt-4" ref={searchContainerRef}>
               <div className="relative">
@@ -373,9 +430,11 @@ function Dashboard() {
                         className="flex w-full items-center justify-between gap-3 rounded-lg px-3 py-2 text-left text-sm hover:bg-slate-50 active:bg-slate-100"
                       >
                         <span className="min-w-0">
-                          <span className="block truncate font-medium text-slate-900">{course.name}</span>
-                          <span className="mt-0.5 block truncate text-xs text-muted-foreground" dir="auto">
-                            {course.number} · {course.hebrewName}
+                          <span className="block truncate font-medium text-slate-900" dir="auto">
+                            {course.hebrewName}
+                          </span>
+                          <span className="mt-0.5 block truncate text-xs text-muted-foreground">
+                            {course.name} · {course.number}
                           </span>
                         </span>
                         <span className="shrink-0 text-xs text-muted-foreground">Add</span>
@@ -416,16 +475,17 @@ function Dashboard() {
                         <span className="flex min-w-0 items-start gap-1.5">
                           {isVisible ? <Check className="mt-0.5 h-3.5 w-3.5 shrink-0" /> : null}
                           <span className="min-w-0">
-                            <span className="block truncate font-medium">{course}</span>
+                            <span className="block truncate font-medium" dir="auto">
+                              {courseInfo?.hebrewName ?? course}
+                            </span>
                             {courseInfo ? (
                               <span
                                 className={cn(
                                   "mt-0.5 block truncate text-[11px]",
                                   isVisible ? "text-sky-700/70" : "text-muted-foreground",
                                 )}
-                                dir="auto"
                               >
-                                {courseInfo.number} · {courseInfo.hebrewName}
+                                {courseInfo.name} · {courseInfo.number}
                               </span>
                             ) : null}
                           </span>
@@ -483,7 +543,7 @@ function Dashboard() {
                 ) : (
                   <div className="space-y-2">
                     {remainingHomework.map((item) => {
-                      const remaining = getTimeRemaining(item.dueAt);
+                      const remaining = getTimeRemaining(item.dueAt, now);
                       const tone = getToneStyles(remaining.tone);
                       return (
                         <HomeworkRow
@@ -494,8 +554,8 @@ function Dashboard() {
                           statusLabel={
                             remaining.tone === "urgent"
                               ? "Urgent"
-                              : remaining.tone === "expired"
-                                ? "Expired"
+                              : remaining.tone === "unknown"
+                                ? "No deadline"
                                 : "Upcoming"
                           }
                           borderClass={tone.border}
@@ -547,6 +607,49 @@ function Dashboard() {
                               actionLabel="Mark as not done"
                               onToggleExpanded={() => toggleExpanded(item.id)}
                               onAction={() => markNotDone(item.id)}
+                            />
+                          );
+                        })
+                      )}
+                    </div>
+                  ) : null}
+                </div>
+
+                <div className="mt-3 border-t border-border pt-3">
+                  <button
+                    type="button"
+                    onClick={() => setShowPast((previous) => !previous)}
+                    aria-expanded={showPast}
+                    className="rounded-full border border-border bg-slate-50 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-100 active:scale-[0.99]"
+                  >
+                    {showPast ? `Hide past homework (${pastHomework.length})` : `Past homework (${pastHomework.length})`}
+                  </button>
+
+                  {showPast ? (
+                    <div className="mt-3 space-y-2">
+                      {pastHomework.length === 0 ? (
+                        <div className="rounded-xl border border-dashed border-border px-3 py-3 text-sm text-muted-foreground">
+                          No past homework.
+                        </div>
+                      ) : (
+                        pastHomework.map((item) => {
+                          const remaining = getTimeRemaining(item.dueAt, now);
+                          const tone = getToneStyles(remaining.tone);
+                          return (
+                            <HomeworkRow
+                              key={item.id}
+                              item={item}
+                              dueLabel={formatDueDate(item)}
+                              remainingLabel={remaining.label}
+                              statusLabel="Expired"
+                              borderClass={tone.border}
+                              badgeClass={tone.badge}
+                              timeClass={tone.time}
+                              rowBgClass={tone.rowBg}
+                              expanded={expandedIds.includes(item.id)}
+                              actionLabel="Mark as done"
+                              onToggleExpanded={() => toggleExpanded(item.id)}
+                              onAction={() => markDone(item.id)}
                             />
                           );
                         })
@@ -609,8 +712,14 @@ function HomeworkRow({
         <div className={cn("text-xl font-bold tracking-tight sm:text-2xl", timeClass)}>{remainingLabel}</div>
 
         <div className="min-w-0">
-          <div className="truncate text-sm font-semibold text-slate-900 sm:text-[15px]">
-            {item.course} · {item.title}
+          <div className="flex min-w-0 items-baseline gap-1 text-sm font-semibold text-slate-900 sm:text-[15px]">
+            <bdi dir="auto" className="min-w-0 shrink-0 max-w-[65%] truncate">
+              {item.title}
+            </bdi>
+            <span className="shrink-0">·</span>
+            <bdi dir="auto" className="min-w-0 flex-1 truncate">
+              {getCourseDisplayName(item.course)}
+            </bdi>
           </div>
           <div className="mt-0.5 text-xs text-muted-foreground sm:text-sm">Due {dueLabel}</div>
         </div>
@@ -638,8 +747,8 @@ function HomeworkRow({
       {expanded ? (
         <div className="mt-3 rounded-lg border border-border bg-white/70 p-3 text-sm">
           <div className="grid gap-2 sm:grid-cols-2">
-            <DetailRow label="Course" value={item.course} />
-            <DetailRow label="Title" value={item.title} />
+            <DetailRow label="Course" value={getCourseDisplayName(item.course)} dir="auto" />
+            <DetailRow label="Title" value={item.title} dir="auto" />
             <DetailRow label="Due date/time" value={dueLabel} />
             <DetailRow label="Description" value={item.description} />
           </div>
@@ -652,11 +761,11 @@ function HomeworkRow({
   );
 }
 
-function DetailRow({ label, value }: { label: string; value: string }) {
+function DetailRow({ label, value, dir }: { label: string; value: string; dir?: "auto" }) {
   return (
     <div>
       <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{label}</p>
-      <p className="mt-0.5 text-sm text-slate-900">{value}</p>
+      <p className="mt-0.5 text-sm text-slate-900" dir={dir}>{value}</p>
     </div>
   );
 }
