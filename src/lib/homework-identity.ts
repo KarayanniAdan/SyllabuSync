@@ -9,7 +9,7 @@ function normalizeTitleKey(title: string): string {
     .trim();
 }
 
-const GENERIC_KIND_KEY = /^(hw|webwork)(?!\d)/;
+const GENERIC_KIND_KEY = /^(hw|webwork|worksheet)(?!\d)/;
 
 /**
  * Identity key for a homework title. It keeps what distinguishes assignments:
@@ -20,6 +20,7 @@ export function normalizeSemanticTitleKey(item: Pick<DeadlineItem, "title" | "ty
   const plain = item.title
     .replace(/רטוב/g, " wet ")
     .replace(/יבש/g, " dry ")
+    .replace(/גיליון\s*עבודה|גיליון/g, " worksheet ")
     .replace(/תרגיל\s*בית|מטלה/g, " hw ");
   const base = normalizeTitleKey(plain);
 
@@ -31,15 +32,16 @@ export function normalizeSemanticTitleKey(item: Pick<DeadlineItem, "title" | "ty
     .replace(/\bexercise\b/g, "assignment");
 
   const isWebwork = /\bwebwork\b/.test(canonical);
+  const isWorksheet = /\bworksheet\b/.test(canonical);
   const numberMatch =
-    canonical.match(/\b(?:hw|homework|assignment|webwork)\s*(\d{1,3})\b/) ??
-    canonical.match(/\b(\d{1,3})\s*(?:hw|homework|assignment|webwork)\b/);
-  const isGeneric = /\b(?:hw|homework|assignment|webwork)\b/.test(canonical);
+    canonical.match(/\b(?:hw|homework|assignment|webwork|worksheet)\s*(\d{1,3})\b/) ??
+    canonical.match(/\b(\d{1,3})\s*(?:hw|homework|assignment|webwork|worksheet)\b/);
+  const isGeneric = /\b(?:hw|homework|assignment|webwork|worksheet)\b/.test(canonical);
 
   // Distinctive names (no hw/homework/webwork wording) are compared by name.
   if (!isGeneric && !numberMatch) return canonical;
 
-  const kind = isWebwork ? "webwork" : "hw";
+  const kind = isWebwork ? "webwork" : isWorksheet ? "worksheet" : "hw";
   const qualifiers: string[] = [];
   if (/\bwet\b/.test(canonical)) qualifiers.push("wet");
   if (/\bdry\b/.test(canonical)) qualifiers.push("dry");
@@ -84,7 +86,7 @@ export const DEADLINE_CHANGE_PATTERN =
 export function isAmbiguousVariantExtension(existingItems: DeadlineItem[], incoming: DeadlineItem): boolean {
   if (incoming.type !== "Homework") return false;
   const key = normalizeSemanticTitleKey(incoming);
-  if (!/^(?:hw|webwork)\d+$/.test(key)) return false;
+  if (!/^(?:hw|webwork|worksheet)\d+$/.test(key)) return false;
   if (!DEADLINE_CHANGE_PATTERN.test(`${incoming.sourceSentence ?? ""}\n${incoming.description ?? ""}`)) return false;
 
   const sameAssignment = existingItems.filter(

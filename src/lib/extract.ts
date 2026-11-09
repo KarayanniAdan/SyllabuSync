@@ -92,6 +92,7 @@ Rules:
 - Homework titles: copy the assignment identifier exactly as the email states it. Use "HW<number>" for numbered homework (e.g. "HW2"), "WebWork <number>" for numbered WebWork (e.g. "WebWork 3"), and keep qualifiers: "HW2 Wet", "HW2 Dry", "WebWork 2 Part A". Homework 2 Wet / תרגיל בית 2 רטוב is "HW2 Wet"; Homework 2 Dry / תרגיל בית 2 יבש is "HW2 Dry". Titles must be in English.
 - If an email announces homework without stating its number, use the title "HW" (or "WebWork" for WebWork). NEVER invent, guess or increment a number from earlier assignments. If the email gives the assignment its own distinctive name, use that name as the title.
 - WebWork assignments are homework: use type "Homework" for them. Keep WebWork and regular homework separate even when numbers match.
+- Trackable assignments are all type "Homework": homework/HW/assignment/תרגיל בית/מטלה/תרגיל להגשה/עבודה (a submitted assignment) use the "HW" title form; worksheet/גיליון/גיליון עבודה use "Worksheet <number>" (or "Worksheet" if unnumbered) and must NOT be renamed to HW. Use "WebWork" only when the email explicitly calls the assignment WebWork. Only announcements of a submittable assignment count; mentions of solutions, discussions in class, or in-class work are not homework. Exams and quizzes are never Homework.
 - If an email only says that "the homework deadline" was extended and doesn't say which assignment, return no item for it.
 - A homework item needs a concrete deadline stated in the email; never invent a date or time.
 - If no specific date/time is mentioned, set dueAt to null and use a descriptive displayDate like "TBD".`;
@@ -397,7 +398,7 @@ function normalizeHomeworkDeadlineText(item: DeadlineItem): DeadlineItem {
   };
 }
 
-const UNNUMBERED_TITLE_PATTERN = /^(?:hw|webwork)(?:\s+(?:wet|dry))?$/i;
+const UNNUMBERED_TITLE_PATTERN = /^(?:hw|webwork|worksheet)(?:\s+(?:wet|dry))?$/i;
 const GENERIC_HOMEWORK_TITLE_PATTERN = /^(?:homework|home\s*work|assignment|exercise|problem\s*set)$/i;
 
 /** A bare "Homework"/"Assignment" title becomes "HW"; numbers and identifiers are never added. */

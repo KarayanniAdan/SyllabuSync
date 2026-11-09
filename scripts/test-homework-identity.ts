@@ -93,6 +93,13 @@ expectDup(hw("HW2"), ext("HW2"), true, "explicit extension updates plain HW2");
 expectDup(hw("HW2 Wet"), ext("HW2"), false, "extension never matches a variant row");
 
 // Keys never gain an invented number.
+expectDup(hw("Worksheet 3"), hw("HW3"), false, "Worksheet 3 vs HW3");
+expectDup(hw("Worksheet 3"), hw("WebWork 3"), false, "Worksheet 3 vs WebWork 3");
+expectDup(hw("Worksheet 3"), hw("גיליון 3"), true, "Worksheet 3 = גיליון 3");
+expectDup(hw("Worksheet 3"), hw("Worksheet 4"), false, "Worksheet 3 vs 4");
+expectDup(hw("Worksheet 3"), hw("Worksheet 3", { dueAt: "2026-12-25T21:59:00.000Z" }), true, "worksheet extension");
+expectDup(hw("Worksheet", { dueAt: "2026-12-10T21:59:00.000Z" }), hw("Worksheet", { dueAt: DUE }), false, "unnumbered worksheets stay separate");
+expectDup(hw("HW3"), hw("תרגיל בית 3"), true, "HW3 = תרגיל בית 3");
 const keyOf = (t: string) => normalizeSemanticTitleKey({ title: t, type: "Homework" });
 if (keyOf("HW") !== "hw" || keyOf("WebWork") !== "webwork" || keyOf("Homework") !== "hw") {
   failures += 1;
