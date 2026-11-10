@@ -8,6 +8,7 @@
     "webhook": "bun run scripts/webhook-server.ts",
     "test:extract-late-policy": "bun run scripts/test-extract-late-policy.ts",
     "test:timezone": "bun run scripts/test-timezone.ts",
+    "test:deadline-regressions": "bun run scripts/test-deadline-regressions.ts",
     "test:courses": "bun run scripts/test-courses.ts",
     "test:homework-sections": "bun run scripts/test-homework-sections.ts",
     "test:homework-identity": "bun run scripts/test-homework-identity.ts",

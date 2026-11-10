@@ -3,7 +3,7 @@ import { join } from "path";
 import type { DeadlineCategory, DeadlineItem, DeadlineStatus } from "../data/mockDeadlineItems";
 import {
   formatDueAtDisplayDate,
-  normalizeDeadlineDueAtFromSource,
+  normalizeDeadlineDueAt,
   parseDeadlineDueAt,
 } from "./timezone";
 
@@ -150,10 +150,7 @@ function readData(): DeadlineItem[] {
 
   const parsed = JSON.parse(readFileSync(DATA_PATH, "utf-8")) as DeadlineItem[];
   const normalized = parsed.map((item) => {
-    const normalizationContext = [item.sourceSentence, item.title, item.description, item.displayDate]
-      .filter((part) => typeof part === "string" && part.trim().length > 0)
-      .join("\n");
-    const dueAt = normalizeDeadlineDueAtFromSource(item.dueAt ?? "", normalizationContext);
+    const dueAt = item.dueAt ? normalizeDeadlineDueAt(item.dueAt) : "";
     return {
       ...item,
       dueAt,
@@ -182,10 +179,7 @@ export function getAllDeadlines(): DeadlineItem[] {
 
 export function saveDeadline(item: DeadlineItem): void {
   const items = readData();
-  const normalizationContext = [item.sourceSentence, item.title, item.description, item.displayDate]
-    .filter((part) => typeof part === "string" && part.trim().length > 0)
-    .join("\n");
-  const normalizedDueAt = normalizeDeadlineDueAtFromSource(item.dueAt ?? "", normalizationContext);
+  const normalizedDueAt = item.dueAt ? normalizeDeadlineDueAt(item.dueAt) : "";
   const normalizedItem = {
     ...item,
     category: item.category ?? getItemCategory(item),

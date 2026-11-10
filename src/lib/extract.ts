@@ -14,10 +14,10 @@ import {
   stripReplyHistory,
   validateItemCourse,
 } from "./course-matching";
-import { DEADLINE_CHANGE_PATTERN } from "./homework-identity";
+import { canonicalHomeworkTitle, DEADLINE_CHANGE_PATTERN } from "./homework-identity";
 import {
   buildAcademicDueAtIso,
-  extractExplicitClockFromText,
+  findDeadlineClock,
   formatDueAtDisplayDate,
   getAcademicNowDateTimeParts,
   getWeekdayInAcademicTimezone,
@@ -89,7 +89,8 @@ Rules:
 - Resolve relative dates (e.g. "this Sunday", "next Thursday", "tomorrow") into absolute calendar dates using today's date.
 - Never use relative wording in dueAt/displayDate. If a relative date appears in the email, convert it to an absolute date.
 - One email can produce multiple items if it mentions multiple deadlines or events.
-- Homework titles: copy the assignment identifier exactly as the email states it. Use "HW<number>" for numbered homework (e.g. "HW2"), "WebWork <number>" for numbered WebWork (e.g. "WebWork 3"), and keep qualifiers: "HW2 Wet", "HW2 Dry", "WebWork 2 Part A". Homework 2 Wet / תרגיל בית 2 רטוב is "HW2 Wet"; Homework 2 Dry / תרגיל בית 2 יבש is "HW2 Dry". Titles must be in English.
+- Homework titles: copy the assignment identifier exactly as the email states it. Use "HW<number>" for numbered homework (e.g. "HW2"), "WebWork<number>" for numbered WebWork (e.g. "WebWork3"), and keep qualifiers: "HW2 Wet", "HW2 Dry", "WebWork2 Part A". Classification priority: anything mentioning WebWork/WeBWorK is "WebWork<number>" (never Wet/Dry); otherwise Wet/רטוב is "HW<number> Wet"; otherwise Dry/יבש is "HW<number> Dry"; otherwise "HW<number>". Take the number from the WebWork reference itself, e.g. "WebWork 1 (HW1)" is "WebWork1" and "HW2 WebWork" is "WebWork2"; never invent a number. Emit one item per assignment. Homework 2 Wet / תרגיל בית 2 רטוב is "HW2 Wet"; Homework 2 Dry / תרגיל בית 2 יבש is "HW2 Dry"; עבודה 1 is "HW1". Titles must be in English and contain only the type, number and qualifiers: never add the assignment's topic or description (use "HW1", not "HW 1 - Complex Numbers").
+- Deadline time: if the email states a deadline date but no deadline time, use 23:59 (Israel time) as the time of dueAt. If it states both, keep both exactly. Never use the time an announcement was published or the email was sent as a deadline time.
 - If an email announces homework without stating its number, use the title "HW" (or "WebWork" for WebWork). NEVER invent, guess or increment a number from earlier assignments. If the email gives the assignment its own distinctive name, use that name as the title.
 - WebWork assignments are homework: use type "Homework" for them. Keep WebWork and regular homework separate even when numbers match.
 - Trackable assignments are all type "Homework": homework/HW/assignment/תרגיל בית/מטלה/תרגיל להגשה/עבודה (a submitted assignment) use the "HW" title form; worksheet/גיליון/גיליון עבודה use "Worksheet <number>" (or "Worksheet" if unnumbered) and must NOT be renamed to HW. Use "WebWork" only when the email explicitly calls the assignment WebWork. Only announcements of a submittable assignment count; mentions of solutions, discussions in class, or in-class work are not homework. Exams and quizzes are never Homework.
@@ -255,7 +256,7 @@ export function enforcePrimaryDeadlinePolicy(item: DeadlineItem, fullEmailText: 
 
   const referenceYear = inferReferenceYear(item.dueAt);
   const combinedText = `${item.sourceSentence}\n${fullEmailText}`;
-  const explicitClock = extractExplicitClockFromText(combinedText);
+  const explicitClock = findDeadlineClock(combinedText, { loose: item.type !== "Homework" });
   const clock = explicitClock ?? getAcademicClockParts(item.dueAt) ?? { hour: 23, minute: 59 };
   const clauses = splitIntoClauses(combinedText);
 
@@ -434,7 +435,7 @@ function tryHeuristicFallbackExtraction(
   const title = hwNumber ? `HW${hwNumber}` : "HW";
 
   // Only an explicit calendar date and an explicit clock time count; never guess either.
-  const clock = extractExplicitClockFromText(text);
+  const clock = findDeadlineClock(text);
   if (!clock) return [];
   const mentions = splitIntoClauses(text).flatMap((clause) =>
     extractDateMentionsFromClause(clause, getAcademicNowDateTimeParts().year, clock.hour, clock.minute),
@@ -507,6 +508,7 @@ export async function extractFromEmail(
       const normalizedDueAt = normalizeDeadlineDueAtFromSource(
         rest.dueAt ?? "",
         normalizationContext,
+        { defaultToEndOfDay: rest.type === "Homework" },
       );
 
       return {
@@ -525,6 +527,7 @@ export async function extractFromEmail(
     .filter((item): item is DeadlineItem => item !== null)
     .map(normalizeHomeworkDeadlineText)
     .map(normalizeGenericHomeworkTitle)
+    .map((item) => (item.type === "Homework" ? { ...item, title: canonicalHomeworkTitle(item) } : item))
     .filter((item) => !isAmbiguousUnnumberedExtension(item))
     .filter((item) => !failsDateQualityGate(item))
     .filter((item) => !isHomeworkAnnouncementWithoutDeadline(item));

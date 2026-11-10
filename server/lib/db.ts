@@ -3,7 +3,7 @@ import { createClient } from "@supabase/supabase-js";
 import type { DeadlineCategory, DeadlineItem } from "../../src/data/mockDeadlineItems";
 import {
   formatDueAtDisplayDate,
-  normalizeDeadlineDueAtFromSource,
+  normalizeDeadlineDueAt,
 } from "../../src/lib/timezone";
 import { isAmbiguousVariantExtension, isLogicalDuplicate } from "../../src/lib/homework-identity";
 
@@ -58,10 +58,8 @@ async function findLogicalDuplicate(
 }
 
 function rowToDeadlineItem(row: any): DeadlineItem {
-  const normalizationContext = [row.source_sentence, row.title, row.description, row.display_date]
-    .filter((part) => typeof part === "string" && part.trim().length > 0)
-    .join("\n");
-  const dueAt = normalizeDeadlineDueAtFromSource(row.due_at ?? "", normalizationContext);
+  // due_at is a stored UTC instant (timestamptz); it must never be re-interpreted from text.
+  const dueAt = row.due_at ? normalizeDeadlineDueAt(row.due_at) : "";
 
   return {
     id: row.id,
@@ -93,10 +91,8 @@ export async function getAllDeadlines(): Promise<DeadlineItem[]> {
 
 export async function saveDeadline(item: DeadlineItem): Promise<void> {
   const supabase = getSupabase();
-  const normalizationContext = [item.sourceSentence, item.title, item.description, item.displayDate]
-    .filter((part) => typeof part === "string" && part.trim().length > 0)
-    .join("\n");
-  const normalizedDueAt = normalizeDeadlineDueAtFromSource(item.dueAt ?? "", normalizationContext);
+  // Items come from extractFromEmail with dueAt already normalized to a UTC instant.
+  const normalizedDueAt = item.dueAt ? normalizeDeadlineDueAt(item.dueAt) : "";
   const normalizedItem: DeadlineItem = {
     ...item,
     dueAt: normalizedDueAt,

@@ -21,13 +21,14 @@ export function normalizeSemanticTitleKey(item: Pick<DeadlineItem, "title" | "ty
     .replace(/רטוב/g, " wet ")
     .replace(/יבש/g, " dry ")
     .replace(/גיליון\s*עבודה|גיליון/g, " worksheet ")
-    .replace(/תרגיל\s*בית|מטלה/g, " hw ");
+    .replace(/תרגיל\s*בית|מטלה|עבודה/g, " hw ");
   const base = normalizeTitleKey(plain);
 
   if (item.type !== "Homework") return base;
 
   const canonical = base
-    .replace(/\bweb\s*work\b/g, "webwork")
+    .replace(/\bweb\s*work(?=\d|\b)/g, "webwork")
+    .replace(/\b(webwork|worksheet)(?=\d)/g, "$1 ")
     .replace(/\bhome\s*work\b/g, "homework")
     .replace(/\bexercise\b/g, "assignment");
 
@@ -43,12 +44,35 @@ export function normalizeSemanticTitleKey(item: Pick<DeadlineItem, "title" | "ty
 
   const kind = isWebwork ? "webwork" : isWorksheet ? "worksheet" : "hw";
   const qualifiers: string[] = [];
-  if (/\bwet\b/.test(canonical)) qualifiers.push("wet");
-  if (/\bdry\b/.test(canonical)) qualifiers.push("dry");
-  const part = canonical.match(/\bpart\s+([a-z0-9]{1,2})\b/);
+  // Priority: WebWork > Wet > Dry > regular HW; a WebWork never carries Wet/Dry.
+  if (kind !== "webwork") {
+    if (/\bwet\b/.test(canonical)) qualifiers.push("wet");
+    else if (/\bdry\b/.test(canonical)) qualifiers.push("dry");
+  }
+  const part = canonical.match(/\bpart\s+(?!of\b)([a-z0-9]{1,2})\b/);
   if (part) qualifiers.push(`part ${part[1]}`);
 
   return [`${kind}${numberMatch ? numberMatch[1] : ""}`, ...qualifiers].join(" ");
+}
+
+const NUMBERED_KEY = /^(hw|webwork|worksheet)(\d{1,3})((?: wet| dry| part [a-z0-9]{1,2})*)$/;
+
+/**
+ * Display title for a numbered homework, rebuilt from its identity key so title and identity can't diverge:
+ * "HW1", "HW2 Wet", "WebWork 3", "WebWork 2 Part A", "Worksheet 3". Topics and descriptions are dropped.
+ * Unnumbered and distinctively named titles are returned unchanged.
+ */
+export function canonicalHomeworkTitle(item: Pick<DeadlineItem, "title" | "type">): string {
+  if (item.type !== "Homework") return item.title;
+  const match = normalizeSemanticTitleKey(item).match(NUMBERED_KEY);
+  if (!match) return item.title;
+
+  const [, kind, number, rawQualifiers] = match;
+  const qualifiers = rawQualifiers
+    .replace(/\b(wet|dry)\b/g, (word) => word[0].toUpperCase() + word.slice(1))
+    .replace(/\bpart ([a-z0-9]+)/, (_, id: string) => `Part ${id.toUpperCase()}`);
+  const base = kind === "hw" ? `HW${number}` : kind === "webwork" ? `WebWork${number}` : `Worksheet ${number}`;
+  return `${base}${qualifiers}`;
 }
 
 function toTimestampOrNull(dueAt: string): number | null {

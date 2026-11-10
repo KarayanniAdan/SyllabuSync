@@ -17,29 +17,70 @@ function stripTrailingTimezone(value: string): string {
   return value.replace(/(?:Z|[+-]\d{2}:?\d{2})$/i, "");
 }
 
+// Asia/Jerusalem is the default zone, so naming it is not a "different timezone".
 function sourceMentionsExplicitTimezone(sourceText: string): boolean {
-  return /(\b(?:utc|gmt)\b|\b(?:eet|eest|cet|cest|pst|pdt|mst|mdt|cst|cdt|est|edt)\b|asia\/jerusalem|utc\s*[+-]\s*\d{1,2}|gmt\s*[+-]\s*\d{1,2}|[+-]\d{2}:?\d{2}\b)/i.test(
+  return /(\b(?:utc|gmt)\b|\b(?:eet|eest|cet|cest|pst|pdt|mst|mdt|cst|cdt|est|edt)\b|utc\s*[+-]\s*\d{1,2}|gmt\s*[+-]\s*\d{1,2}|[+-]\d{2}:?\d{2}\b)/i.test(
     sourceText,
   );
 }
 
 export function extractExplicitClockFromText(sourceText: string): { hour: number; minute: number } | null {
-  const amPmMatch = sourceText.match(/\b(1[0-2]|0?[1-9]):([0-5]\d)\s*(am|pm)\b/i);
+  const amPmMatch = sourceText.match(/\b(1[0-2]|0?[1-9])(?::([0-5]\d))?\s*(am|pm)\b/i);
   if (amPmMatch) {
     const rawHour = Number(amPmMatch[1]);
-    const minute = Number(amPmMatch[2]);
+    const minute = Number(amPmMatch[2] ?? "0");
     const meridiem = amPmMatch[3].toLowerCase();
     const hour = meridiem === "pm" ? (rawHour % 12) + 12 : rawHour % 12;
     return { hour, minute };
   }
 
   const twentyFourHourMatch = sourceText.match(/\b([01]?\d|2[0-3]):([0-5]\d)\b/);
-  if (!twentyFourHourMatch) return null;
+  if (twentyFourHourMatch) {
+    return {
+      hour: Number(twentyFourHourMatch[1]),
+      minute: Number(twentyFourHourMatch[2]),
+    };
+  }
 
-  return {
-    hour: Number(twentyFourHourMatch[1]),
-    minute: Number(twentyFourHourMatch[2]),
-  };
+  // "בשעה 23.59" / "at 23.59": a dot is only a clock separator right after a time word.
+  const dottedMatch = sourceText.match(/(?:בשעה|ב-|\bat|\bby|\buntil)\s*([01]?\d|2[0-3])\.([0-5]\d)\b/i);
+  return dottedMatch ? { hour: Number(dottedMatch[1]), minute: Number(dottedMatch[2]) } : null;
+}
+
+// Times of an announcement or of the email itself are never a homework deadline time.
+const PUBLICATION_PATTERN =
+  /\bpublish(?:ed)?\b|\bposted\b|\bsent\b|\breceived\b|\bannounced\b|\btimestamp\b|פורסם|פורסמה|פרסום|נשלח|נשלחה|התקבל/i;
+
+const DEADLINE_WORD_PATTERN =
+  /\bdue\b|\bdeadline\b|\bsubmit\b|\bsubmission\b|\bcloses?\b|\bby\b|\buntil\b|\bno\s+later\s+than\b|להגיש|להגשה|הגשה|מועד|(?:^|[\s,(])עד(?=[\s\d]|$)/i;
+
+const DATE_PATTERN = /\b\d{1,2}[\/.]\d{1,2}(?:[\/.]\d{2,4})?\b|\b\d{4}-\d{2}-\d{2}\b/;
+
+function splitIntoSourceClauses(text: string): string[] {
+  return text
+    .split(/[\n!?;]+|\.\s+/)
+    .map((clause) => clause.trim())
+    .filter((clause) => clause.length > 0);
+}
+
+/**
+ * The clock that belongs to the deadline: the first clause with a time that is not about publishing
+ * or sending and that talks about a deadline or carries a date. `loose` accepts any such clause
+ * with a time (for events and quizzes, whose times are not phrased as deadlines).
+ */
+export function findDeadlineClock(
+  sourceText: string,
+  { loose = false }: { loose?: boolean } = {},
+): { hour: number; minute: number; clause: string } | null {
+  for (const clause of splitIntoSourceClauses(sourceText)) {
+    if (PUBLICATION_PATTERN.test(clause)) continue;
+    const clock = extractExplicitClockFromText(clause);
+    if (!clock) continue;
+    if (loose || DEADLINE_WORD_PATTERN.test(clause) || DATE_PATTERN.test(clause)) {
+      return { ...clock, clause };
+    }
+  }
+  return null;
 }
 
 function getDatePartsInTimezone(date: Date, timeZone: string): { year: number; month: number; day: number } | null {
@@ -170,45 +211,40 @@ export function normalizeDeadlineDueAt(dueAt: string): string {
   return Number.isNaN(fallback.getTime()) ? "" : fallback.toISOString();
 }
 
-export function normalizeDeadlineDueAtFromSource(dueAt: string, sourceText: string): string {
+/**
+ * Converts the model's dueAt into a UTC instant, treating the date as Israel local unless the deadline
+ * text names another timezone. The time of day comes only from a clock in a deadline clause, never from
+ * publication/sent times elsewhere in the email. With `defaultToEndOfDay` (homework), a date without an
+ * explicit deadline time becomes 23:59 Israel time.
+ */
+export function normalizeDeadlineDueAtFromSource(
+  dueAt: string,
+  sourceText: string,
+  { defaultToEndOfDay = false }: { defaultToEndOfDay?: boolean } = {},
+): string {
   const value = dueAt.trim();
   if (!value) return "";
 
-  const sourceHasExplicitTimezone = sourceMentionsExplicitTimezone(sourceText);
-  const sourceClock = extractExplicitClockFromText(sourceText);
+  const deadlineClock =
+    findDeadlineClock(sourceText) ?? (defaultToEndOfDay ? null : findDeadlineClock(sourceText, { loose: true }));
 
-  let normalized = "";
-
-  if (hasExplicitTimezone(value) && !sourceHasExplicitTimezone) {
-    normalized = normalizeDeadlineDueAt(stripTrailingTimezone(value));
-  } else {
-    normalized = normalizeDeadlineDueAt(value);
+  if (deadlineClock && sourceMentionsExplicitTimezone(deadlineClock.clause)) {
+    return normalizeDeadlineDueAt(value);
   }
 
+  const normalized = normalizeDeadlineDueAt(hasExplicitTimezone(value) ? stripTrailingTimezone(value) : value);
   if (!normalized) return "";
 
-  // If source includes an explicit clock time but no explicit timezone, trust the clock as Israel local time.
-  if (!sourceHasExplicitTimezone && sourceClock) {
-    const parsed = new Date(normalized);
-    if (!Number.isNaN(parsed.getTime())) {
-      const dateParts = getDatePartsInTimezone(parsed, DEFAULT_ACADEMIC_TIMEZONE);
-      if (dateParts) {
-        return zonedDateTimePartsToUtcDate(
-          {
-            year: dateParts.year,
-            month: dateParts.month,
-            day: dateParts.day,
-            hour: sourceClock.hour,
-            minute: sourceClock.minute,
-            second: 0,
-          },
-          DEFAULT_ACADEMIC_TIMEZONE,
-        ).toISOString();
-      }
-    }
-  }
+  const clock = deadlineClock ?? (defaultToEndOfDay ? { hour: 23, minute: 59 } : null);
+  if (!clock) return normalized;
 
-  return normalized;
+  const dateParts = getDatePartsInTimezone(new Date(normalized), DEFAULT_ACADEMIC_TIMEZONE);
+  if (!dateParts) return normalized;
+
+  return zonedDateTimePartsToUtcDate(
+    { ...dateParts, hour: clock.hour, minute: clock.minute, second: 0 },
+    DEFAULT_ACADEMIC_TIMEZONE,
+  ).toISOString();
 }
 
 export function parseDeadlineDueAt(dueAt: string): Date | null {
