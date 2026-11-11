@@ -1,4 +1,4 @@
-import { defineEventHandler, readBody } from "h3";
+import { defineEventHandler, readBody, getRequestHeader, createError } from "h3";
 import "dotenv/config";
 import { extractFromEmail } from "../../src/lib/extract";
 import {
@@ -117,6 +117,16 @@ function isHomeworkItem(item: unknown): boolean {
 }
 
 export default defineEventHandler(async (event) => {
+  const secret = process.env.WEBHOOK_SECRET;
+  const providedSecret = getRequestHeader(event, "x-syllabusync-secret");
+
+  if (!secret) {
+    throw createError({ statusCode: 503 });
+  }
+
+  if (providedSecret !== secret) {
+    throw createError({ statusCode: 401 });
+  }
   try {
     const body = await readBody<Record<string, unknown>>(event);
 
